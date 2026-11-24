@@ -60,7 +60,7 @@ const VERDICT = {
   properties: {
     canonical_answer: { type: 'string', description: 'the single canonical result in the exact requested format' },
     derivation_summary: { type: 'string', description: 'Optional navigation summary, never assessment evidence by itself' },
-    derivation: { type: 'string', description: 'COMPLETE original derivation, all steps, premises, applicability/limits and actual computation source/output if used; no sentence limit or truncation' },
+    derivation: { type: 'string', description: 'the full written derivation, as in a paper appendix: every mathematical step stated explicitly, premises, applicability/limits and actual computation source/output if used; not abbreviated' },
     confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
   },
   required: ['canonical_answer', 'derivation', 'confidence'],
@@ -100,16 +100,31 @@ const COMPARE = {
 }
 
 function vPrompt(c, method) {
-  return `${CTX}\nBLIND TASK (do NOT assume the answer; derive it from scratch):\n${c.statement}\n\n${method || ''}\n\nOUTPUT: canonical_answer in EXACTLY this format: ${c.report_format}. Give derivation with COMPLETE original steps, conventions, raw input, method applicability and diagnostic limits; no sentence limit or truncation. If you used computation, include complete source and actual records, never invent execution. A short derivation_summary may help navigation but is not the evidence. Give confidence.`
+  return `${CTX}\nBLIND TASK (do NOT assume the answer; derive it from scratch):\n${c.statement}\n\n${method || ''}\n\nOUTPUT: canonical_answer in EXACTLY this format: ${c.report_format}. Give derivation as the full written derivation, as it would appear in a paper appendix: every mathematical step stated explicitly, with conventions, raw input, method applicability and diagnostic limits; do not abbreviate it. If you used computation, include complete source and actual records, never invent execution. A short derivation_summary may help navigation but is not the evidence. Give confidence.`
 }
+function stringValues(value) {
+  if (typeof value === 'string') return [value]
+  if (Array.isArray(value)) return value.flatMap(stringValues)
+  if (value && typeof value === 'object') return Object.values(value).flatMap(stringValues)
+  return []
+}
+// Texts an input/execution span may quote verbatim: the original derivation body, the navigation summary,
+// and the observed transport record both as the packet encodes it and as its decoded string values.
+// The packet carries each lane's text once as derivation and once inside transport.raw_output; no field repeats it.
+// The host protocol observes no capture stream, so the native transport holds no captured_records to carry.
 function sourceMaterial(d) {
-  return `${d.derivation || ''}\n${JSON.stringify(d.transport || {})}`
+  return [d.derivation || '', d.derivation_summary || '', JSON.stringify(d.transport || {}), ...stringValues(d.transport || {})]
 }
 function cmpPrompt(c, ds) {
-  const packet = ds.map(d => ({ ...d, assessment_source: sourceMaterial(d) }))
-  return `${CTX}\nClaim: ${c.statement}\nExpected canonical format: ${c.report_format}\nFULL_DERIVATION_RECORDS_JSON:\n${JSON.stringify(packet)}\n\nRead COMPLETE original derivations, runtime-observed requests/raw outputs and successful call records. A summary, self-filled freshness checkbox or name is not provenance. Cluster mathematical equivalence and independently recompute. majority_answer must copy an actual canonical_answer from majority_indices, and majority_size must equal their enumerated cardinality; empty or contradictory clusters are unavailable. For every lane provide independence_assessments for input/execution/construction, applicability, diagnostic power and unresolved defects, plus observed_method grounded in actual steps. Every evidence item quotes an exact source_span with a substantive reason. Construction/applicability/diagnostic MUST anchor the COMPLETE original derivation BODY itself; only input/execution may anchor assessment_source including transport. Missing original steps, failed invocation, contaminated input, copied reasoning, relevant defects or non-diagnostic checks refuse. Same/similar methods, same family and legitimate shared libraries alone do not reject. Explicit method risk required: ${c.requires_method_diversity === true}; declared risk: ${c.method_diversity_risk || 'assess shared failure modes substantively'}. Give method_risk_assessments with indices [i,j], addresses_shared_failure and methods_distinct booleans (actual mechanisms, never labels), specific risk and method_analysis, plus evidence [{index,source_span,reason}] from BOTH COMPLETE original derivation BODIES, never metadata. Explain why the shared failure mode is independently tested or avoided; distinct hint names or wording do not establish orthogonality. Unsupported evidence is unavailable.`
+  return `${CTX}\nClaim: ${c.statement}\nExpected canonical format: ${c.report_format}\nFULL_DERIVATION_RECORDS_JSON:\n${JSON.stringify(ds)}\n\nRead COMPLETE original derivations, runtime-observed requests/raw outputs and successful call records. A summary alone, a self-filled freshness checkbox or a name is not provenance. Cluster mathematical equivalence and independently recompute. majority_answer must copy an actual canonical_answer from majority_indices, and majority_size must equal their enumerated cardinality; empty or contradictory clusters are unavailable. For every lane provide independence_assessments for input/execution/construction, applicability, diagnostic power and unresolved defects, plus observed_method grounded in actual steps. Every evidence item quotes an exact source_span with a substantive reason. Construction/applicability/diagnostic MUST anchor the COMPLETE original derivation BODY itself; only input/execution may also anchor the transport record exactly as shown (request, raw_output) or any of its decoded values, or derivation_summary. Missing original steps, failed invocation, contaminated input, copied reasoning, relevant defects or non-diagnostic checks refuse. Same/similar methods, same family and legitimate shared libraries alone do not reject. Explicit method risk required: ${c.requires_method_diversity === true}; declared risk: ${c.method_diversity_risk || 'assess shared failure modes substantively'}. Give method_risk_assessments with indices [i,j], addresses_shared_failure and methods_distinct booleans (actual mechanisms, never labels), specific risk and method_analysis, plus evidence [{index,source_span,reason}] from BOTH COMPLETE original derivation BODIES, never metadata. Explain why the shared failure mode is independently tested or avoided; distinct hint names or wording do not establish orthogonality. Unsupported evidence is unavailable.`
 }
 const runtimeObservations = new WeakSet()
+
+// Exact quotation with line endings (CRLF, CR, LF) compared as equal; they are not content.
+const sameLineEndings = text => text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+function occursIn(span, text) {
+  return typeof span === 'string' && typeof text === 'string' && sameLineEndings(text).includes(sameLineEndings(span))
+}
 
 function validTransport(d) {
   if (!runtimeObservations.has(d)) return false
@@ -123,7 +138,7 @@ function riskPasses(c, ds, idx, cmp) {
   return (Array.isArray(cmp.method_risk_assessments) ? cmp.method_risk_assessments : []).some(r => {
     if (!r || r.addresses_shared_failure !== true || r.methods_distinct !== true || !Array.isArray(r.indices) || r.indices.length !== 2 || r.indices[0] === r.indices[1] || r.indices.some(i => !Number.isInteger(i) || !idx.includes(i))) return false
     if (['risk','method_analysis'].some(k => typeof r[k] !== 'string' || r[k].trim().length < 20) || !Array.isArray(r.evidence) || r.evidence.length !== 2) return false
-    return r.indices.every(i => r.evidence.some(e => e && e.index === i && typeof e.source_span === 'string' && e.source_span.trim() && typeof ds[i].derivation === 'string' && ds[i].derivation.includes(e.source_span) && typeof e.reason === 'string' && e.reason.trim().length >= 20))
+    return r.indices.every(i => r.evidence.some(e => e && e.index === i && typeof e.source_span === 'string' && e.source_span.trim() && occursIn(e.source_span, ds[i].derivation) && typeof e.reason === 'string' && e.reason.trim().length >= 20))
   })
 }
 function accepted(c, ds, cmp) {
@@ -138,7 +153,7 @@ function accepted(c, ds, cmp) {
     if (!Array.isArray(a.unresolved_defects) || a.unresolved_defects.length) continue
     if (['input','execution','construction','applicability','diagnostic'].every(k => {
       const e = (a.evidence || {})[k]
-      return e && typeof e.reason === 'string' && e.reason.trim().length >= 20 && typeof e.source_span === 'string' && e.source_span.trim() && (['input','execution'].includes(k) ? sourceMaterial(ds[i]) : ds[i].derivation).includes(e.source_span)
+      return e && typeof e.reason === 'string' && e.reason.trim().length >= 20 && typeof e.source_span === 'string' && e.source_span.trim() && (['input','execution'].includes(k) ? sourceMaterial(ds[i]).some(text => occursIn(e.source_span, text)) : occursIn(e.source_span, ds[i].derivation))
     })) good.add(i)
   }
   const rawIndices = cmp.majority_indices
@@ -170,7 +185,10 @@ async function compare(c, ds, label, stage) {
     observed_usage: null, capture_observation: 'unavailable', compaction_witness: 'unavailable',
   } })
   if (!validBudgets) return unavailable('Invalid configured comparator request budget.')
-  if (inputBound > CONTEXT_BYTES) return unavailable('Complete original comparator request exceeds configured byte budget; no truncation.')
+  // Length decides only carriage. This host protocol returns one object per agent() call and no capture of
+  // tool calls or their results, so it cannot show which bytes of frozen files a comparator was returned:
+  // material that does not fit one complete request stays unavailable as content not completely read.
+  if (inputBound > CONTEXT_BYTES) return unavailable('Content not completely read: the complete comparator material does not fit one request, and this host protocol cannot show which file bytes a comparator was returned; nothing is truncated.')
   // agent() has no authenticated provider token/capture API in this host protocol.
   // Conservatively bound the entire visible request and output before dispatch.
   if (inputBound + OUTPUT_RESERVE > CONTEXT_TOKENS) return unavailable('Complete original comparator request and output reserve exceed configured token window.')

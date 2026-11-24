@@ -282,11 +282,11 @@ export function resolveResultArtifact(
     issues.push(issue('result_artifact_link_missing', `${resultId} has no artifact Markdown link`));
     return null;
   }
-  if (target.startsWith('/') || /^[a-z]+:/i.test(target)) {
+  const relative = target.split('#', 1)[0]!.split(path.sep).join('/');
+  if (relative.startsWith('/') || /^[a-z]+:/i.test(relative)) {
     issues.push(issue('invalid_result_artifact_target', `${resultId} must use a project-relative link`));
     return null;
   }
-  const relative = target.split('#')[0]!;
   const parts = relative.split('/').filter(part => part.length > 0);
   if (parts.includes('..')) {
     issues.push(issue('invalid_result_artifact_target', `${resultId} target cannot contain parent traversal`));
@@ -497,8 +497,9 @@ function setCurrentResultLocked(
   }
   // Round-trip safety first: refuse any field a markdown cell cannot carry,
   // instead of writing a row the parser would silently un-see.
+  const artifactRelPath = input.artifactRelPath.split(path.sep).join('/');
   assertCellSafe('run id', input.runId);
-  assertCellSafe('artifact path', input.artifactRelPath);
+  assertCellSafe('artifact path', artifactRelPath);
   if (input.description !== undefined) assertCellSafe('description', input.description);
   if (input.runId.includes('`')) {
     throw new Error('run id must not contain backticks (the registry cell is backtick-wrapped)');
@@ -506,7 +507,7 @@ function setCurrentResultLocked(
   // Link-syntax safety: ')' would truncate the markdown link target on
   // re-parse, and '#' silently splits as a fragment, hashing a different
   // file than the row names. Both refused up front.
-  if (/[()#]/.test(input.artifactRelPath)) {
+  if (/[()#]/.test(artifactRelPath)) {
     throw new Error("artifact path must not contain '(', ')' or '#' (they break the markdown link round-trip)");
   }
   const indexPath = path.join(projectRoot, 'project_index.md');
@@ -528,9 +529,9 @@ function setCurrentResultLocked(
   // Same containment rule as the validator — no writer/validator asymmetry:
   // a row the validator would flag must not be mintable with exit 0.
   const preflight: ResultRegistryIssue[] = [];
-  const artifactAbsolute = resolveResultArtifact(projectRoot, input.resultId, input.artifactRelPath, preflight);
+  const artifactAbsolute = resolveResultArtifact(projectRoot, input.resultId, artifactRelPath, preflight);
   if (!artifactAbsolute) {
-    throw new Error(preflight.map(entry => entry.message).join('; ') || `artifact ${input.artifactRelPath} is not registrable`);
+    throw new Error(preflight.map(entry => entry.message).join('; ') || `artifact ${artifactRelPath} is not registrable`);
   }
   const digest = createHash('sha256').update(fs.readFileSync(artifactAbsolute)).digest('hex');
   const ledgerBytes = fs.existsSync(validityLedgerPath(projectRoot)) ? fs.readFileSync(validityLedgerPath(projectRoot)) : Buffer.alloc(0);
@@ -632,15 +633,17 @@ function setCurrentResultLocked(
     }
     const linked = links[0];
     if (linked) {
-      if (linked[1]!.trim() !== input.artifactRelPath) {
+      const linkedPath = linked[1]!.trim();
+      if (linkedPath.split(path.sep).join('/') !== artifactRelPath) {
         throw new Error(
-          `--description links ${linked[1]} but --artifact is ${input.artifactRelPath}; `
+          `--description links ${linked[1]} but --artifact is ${artifactRelPath}; `
           + 'the description link must name the hashed artifact',
         );
       }
-      description = input.description;
+      description = linkedPath === artifactRelPath ? input.description
+        : input.description.replace(linked[0], () => linked[0].replace(`(${linked[1]})`, () => `(${artifactRelPath})`));
     } else {
-      description = `${input.description} — [artifact](${input.artifactRelPath})`;
+      description = `${input.description} — [artifact](${artifactRelPath})`;
     }
   } else if (existing) {
     // Carried-forward descriptions obey the same one-link rule as provided
@@ -653,10 +656,10 @@ function setCurrentResultLocked(
         + 'pass an explicit --description with at most one link (the hashed artifact)',
       );
     }
-    description = existing.description.replace(/\]\([^)]*\)/, `](${input.artifactRelPath})`);
+    description = existing.description.replace(/\]\([^)]*\)/, `](${artifactRelPath})`);
     assertCellSafe('carried-forward description', description);
   } else {
-    description = `[${input.resultId}](${input.artifactRelPath})`;
+    description = `[${input.resultId}](${artifactRelPath})`;
   }
   const newLine = `| \`${input.resultId}\` | ${description} | \`${digest}\` | \`${runCell}\` | \`${supersedes}\` | \`none\` |`;
   // Airtight round-trip: the exact line about to be written must re-parse to
@@ -671,7 +674,7 @@ function setCurrentResultLocked(
       || cells[0]!.replace(/`/g, '') !== input.resultId
       || !reparsedRun || reparsedRun.run_id !== input.runId
       || reparsedRun.effective_commit === null
-      || !reparsedLink || reparsedLink[1]!.trim() !== input.artifactRelPath
+      || !reparsedLink || reparsedLink[1]!.trim() !== artifactRelPath
     ) {
       throw new Error('internal refusal: the registry line would not round-trip; no row was written');
     }
@@ -718,7 +721,7 @@ function setCurrentResultLocked(
     row: {
       result_id: input.resultId,
       description,
-      artifact_target: input.artifactRelPath,
+      artifact_target: artifactRelPath,
       artifact_sha256: digest,
       run_id: input.runId,
       effective_commit: effective.slice(0, 12),

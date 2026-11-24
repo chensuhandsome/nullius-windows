@@ -6,13 +6,99 @@ Current most mature HEP domain pack. Local stdio MCP server exposing `hep_*` too
 
 Domain workflow pack. The strongest end-to-end example in the repo, but **not the root product identity** — generic lifecycle and contracts live in `@nullius/orchestrator` and `@nullius/shared`. See root [README.md](../../README.md) §3 Layer Model.
 
-`hep-mcp` is a tool package, not generic lifecycle or approval authority. It keeps no runs, paper/evidence projects or evidence catalogs of its own: runs, approvals and lifecycle belong to the orchestrator (`<project_root>/artifacts/runs/<run_id>/`). Tools that produce files (`hep_inspire_search_export`, `hep_inspire_resolve_identifiers`, `hep_import_from_zotero`, `inspire_parse_latex`, `inspire_theoretical_conflicts`, and `inspire_search` when given `output_dir`) write them into a caller-chosen `output_dir`, typically a subdirectory of the current run directory, and return project-relative paths (`export_path`, `meta_path`, `mapping_path`, `path`, `artifacts[].path`). INSPIRE lookups made through the response cache (by `hep_inspire_search_export`, `hep_inspire_resolve_identifiers`, `inspire_search` with `output_dir`, and the INSPIRE resolution step of `hep_import_from_zotero`) are recorded request by request under `<output_dir>/external_api/`; other provider calls (the Zotero local API, the paper fetches of `inspire_theoretical_conflicts`, the source retrieval of `inspire_parse_latex`) are not recorded there. There are no project or evidence catalog, draft rendering, project export or paper bundling tools.
+`hep-mcp` is a tool package, not generic lifecycle or approval authority. It keeps no runs, paper/evidence projects or evidence catalogs of its own: runs, approvals and lifecycle belong to the orchestrator (`<project_root>/artifacts/runs/<run_id>/`). Tools that produce files (`hep_inspire_search_export`, `hep_inspire_resolve_identifiers`, `hep_import_from_zotero`, `inspire_parse_latex`, and `inspire_search` when given `output_dir`) write them into a caller-chosen `output_dir`, typically a subdirectory of the current run directory, and return project-relative paths (`export_path`, `meta_path`, `mapping_path`, `path`, `artifacts[].path`). INSPIRE lookups made through the response cache (by `hep_inspire_search_export`, `hep_inspire_resolve_identifiers`, `inspire_search` with `output_dir`, and the INSPIRE resolution step of `hep_import_from_zotero`) are recorded request by request under `<output_dir>/external_api/`; other provider calls (the Zotero local API, the source retrieval of `inspire_parse_latex`) are not recorded there. There are no project or evidence catalog, draft rendering, project export or paper bundling tools.
 
 Historical HEP run directories (`runs/<run_id>/` under a HEP data root) and paper/evidence project directories (`projects/<project_id>/`, including evidence catalogs) written by earlier versions are evidence: they stay readable in place and no tool creates or rewrites them. [docs/URI_REGISTRY.md](../../docs/URI_REGISTRY.md) gives the reading rules for historical `hep://runs/...` and `hep://projects/...` references.
 
+## Numerical comparisons
+
+The automated `inspire_detect_measurement_conflicts` operator has been retired.
+It no longer appears in either exposure mode, and calls to that name return an
+unknown-tool error. Existing saved outputs remain readable; they are not
+recomputed, rewritten or promoted to accepted evidence by this change.
+
+Use `inspire_paper_source` or `arxiv_paper_source` to obtain sources, then read
+the returned files with the host's available tools. A downloaded path is not
+read content. `inspire_parse_latex` still provides structural tables and
+locators; PDG and HEPData retain their independent data-access tools. Establish
+observable definitions, conditions, units, uncertainty conventions and shared
+inputs before using existing numerical execution to compare or combine values.
+Preserve asymmetric errors and limits. Unresolved comparability or correlations
+must remain explicit; absence of a comparable pair is not evidence of agreement.
+See the [numeric-source guidance](../../skills/research-integrity/references/m3-numeric-sources.md).
+
+## Research judgment and source access
+
+Scientific interpretation belongs to the host using the actual sources. The
+provider retains search, records, original text, data, citation structure and
+LaTeX extraction. The following tools have been retired from both exposure
+modes: `inspire_grade_evidence`, `inspire_critical_analysis`,
+`inspire_classify_reviews`, `inspire_theoretical_conflicts`,
+`inspire_analyze_citation_stance`, and `inspire_find_crossover_topics`.
+Calls to those names return an unknown-tool error. Their private scientific
+scoring, preset judgments and dedicated sampling pipelines have been removed.
+Historical outputs remain readable with their original provenance and status;
+they do not acquire current scientific acceptance.
+
+`inspire_topic_analysis` retains `timeline`, `evolution` and `all` metadata
+views. The `emerging` mode and its momentum, disruption and new-entrant scoring
+options are removed. Use explicit date/citation queries and analyze a defined
+bibliometric sample in the research project if the task needs that analysis.
+The retained metadata summaries and their sampled ordering are not scientific
+quality, novelty or priority judgments.
+
+Both views retain every requested period, including a zero result or an
+unavailable query. A phase's `paper_count` is the provider-reported match count;
+it is `null` when the query fails. Its `search` records `status`
+(`available`/`unavailable`), the exact `query`, `requested_page_size`, optional
+`sort`, `returned_count`, `sample_complete`, `has_more` and any `next_url`,
+`warning` or `error`. Failed queries use `null` for the returned count and
+continuation/completeness fields. A successful page is not necessarily the
+complete result set. `coverage.period_queries` and `coverage.paper_samples`
+summarize period queries and their samples separately as `complete` or `partial`;
+they do not establish literature coverage or source reading.
+
+- `timeline` requests at most five most-cited records per year and exposes the
+  first three as `key_papers`. `sample_citation_sum` sums only the returned
+  records; it is `null` on query failure or when any sampled citation count is
+  missing. `missing_citation_count` records those missing sample values.
+  `total_papers` comes from a separate count query for the same topic and exact
+  interval, with its own `total_search` status.
+- `evolution` requests one most-cited page of at most 1000 records per period.
+  `sample_basis` makes the five-paper selection and author-occurrence summary
+  explicit: `key_authors` counts only the first three authors of each sampled
+  record. `publication_count_change` compares adjacent, available, equally long
+  periods with a positive previous count; otherwise it is `null`. It is not
+  citation momentum or a categorical trend forecast. `current_status` counts the
+  final two years of the requested interval (or the shorter interval), retaining
+  its own `time_range` and `search` status. The old `citation_momentum`,
+  `growth_rate`, categorical `trend` and `subtopics` outputs are removed.
+
+`time_range_basis` distinguishes `requested_start` from
+`default_20_year_lookback`: without a supplied start, the start year is the end
+year minus 20. It does not identify the topic's earliest publication. Check the
+separate total/recent query statuses as well as the period coverage fields.
+
+`inspire_trace_original_source` returns `source_candidates` and a `trace_chain`
+from bounded citation metadata. Each node records distinct observed
+`citing_recids`, an `incoming_reference_count`, and whether its reference lookup
+was returned, unavailable, or not requested at the depth limit. A returned
+`reference_lookup` includes `returned_count`, `unresolved_count`, `selected_count`
+and `truncated_by_limit`; these describe the adapter response and the bounded
+selection for traversal. An empty lookup is an adapter result,
+not proof that the original paper has no bibliography.
+`cross_validate=true` filters to candidates cited by at least two distinct
+traced records; it does not establish independent scientific confirmation.
+Candidates are ordered by that observed count, then known year and record ID.
+Unknown-year records remain eligible. The old `original_sources`, priority
+confidence, originality labels and `independent_chains` fields are removed.
+Scientific priority remains `not_assessed`; establish it from explicit claims
+and original texts. Previously saved outputs retain their historical bytes and
+meaning, without acquiring current scientific acceptance.
+
 ## Aggregated providers
 
-`hep-mcp` re-exposes a curated subset of the bounded provider MCP atoms (`arxiv-mcp`, `openalex-mcp`, `hepdata-mcp`, `pdg-mcp`, `zotero-mcp`) under `hep_*` namespaces. Zotero aggregation is gated by `HEP_ENABLE_ZOTERO` (set to `0` to hide `hep_import_from_zotero` and friends); the other providers are always included when present.
+`hep-mcp` re-exposes the bounded provider MCP atoms (`arxiv-mcp`, `openalex-mcp`, `hepdata-mcp`, `pdg-mcp`, `zotero-mcp`) under their own tool names (`arxiv_*`, `openalex_*`, `hepdata_*`, `pdg_*`, `zotero_*`), with the same `standard`/`full` exposure as in the provider packages. Zotero aggregation is gated by `HEP_ENABLE_ZOTERO` (set to `0` to hide `hep_import_from_zotero` and friends); the other providers are always included when present.
 
 The live tool inventory is code-owned and mode-filtered by `HEP_TOOL_MODE` (`standard`, `full`). Exact counts live in the generated category and status docs, not in this README — see the drift lock below.
 
@@ -41,6 +127,11 @@ Resolved per tool call, in this order:
 3. `~/.nullius/hep-mcp/` (scratch fallback)
 
 `PDG_DATA_DIR` follows the resolved root by default at `<resolved root>/pdg`.
+
+`hep_health` checks whether the data and download directories are writable
+or can be created when needed. Running it on a fresh project leaves both paths
+absent. A search export can create the response cache without downloading any
+papers. Its run records refer to individual cache entries by file URI.
 
 A `project_root` is admitted as at the other nullius front doors: in canonical
 (symlink-resolved) form, outside any nullius checkout, and initialized. The
@@ -103,7 +194,7 @@ Wire into an MCP client (Cursor / Claude Desktop / Claude Code / Codex / OpenCod
 }
 ```
 
-`inspire_literature` accepts the common optional `project_root` in all seven modes while retaining each mode's own required and allowed provider arguments. Its advertised catalog, parser and dispatcher agree; `size` is optional and is not required by modes that reject it.
+`inspire_literature` accepts the common optional `project_root` in all seven modes while retaining each mode's own required and allowed provider arguments. Use a digit string or a positive JSON integer for a literature record ID. Quote IDs above 9007199254740991 to preserve every digit. `get_bibtex` accepts an array of these IDs, a single ID, or a comma- or whitespace-separated string.
 
 ## Front-door drift lock
 

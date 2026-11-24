@@ -2,6 +2,23 @@
 
 原生 Windows 的依赖、PowerShell launcher、NTFS/ACL/Job Object 边界与验收说明见 [Windows 指南](./WINDOWS.md)。Windows CI 验证平台适配，Ubuntu CI 保留完整上游回归；凭据依赖的模型调用另行验收。
 
+## Research writing and file continuity regressions
+
+```bash
+python3 -m pytest skills/research-writer/tests skills/research-team/tests/test_export_paper_bundle.py -q
+pnpm --filter @nullius/orchestrator exec vitest run tests/notebook-content-review.test.ts tests/notebook-review-batches.test.ts tests/notebook-review-guidance.test.ts
+```
+
+The writer tests cover empty-scaffold initialization, manifest-selected TeX entry
+points, failed/missing compiler behavior, current PDF selection and portable arXiv
+staging. Bundle tests move the output to another root and remove the source before
+checking notebook/report links, cross-run inputs, symlinks, figures and BibTeX.
+Path fixtures are not PDF rendering or scientific validation. Notebook cases
+separate changing navigation from original scientific dependencies, check mixed
+links and explicit dependencies, and reject incomplete single-call or joint
+reviews. Deterministic reviewer transports test the contract, not model reasoning.
+Actual research acceptance still requires the applicable real scientific checks.
+
 本指南面向手工验收当前 front-door truth。`nullius` 是 generic lifecycle + workflow-plan front door；`@nullius/hep-mcp` 是当前最成熟的 domain MCP front door，提供 literature/data、项目内研究输出、Zotero、PDG 能力。本页重点覆盖两者的衔接，而不是把 `hep-mcp` 重新写成 root 产品身份。
 
 > 说明
@@ -22,6 +39,26 @@ python3 -m pytest -q packages/project-contracts/tests/test_root_policy.py packag
 
 这些检查覆盖审批内容绑定、暂停后的字节保持、最后一步竞争、总截止时间、锁内状态比较与根目录准入；它们不构成科学结果的独立验证。
 
+科学判断边界的定向检查：
+
+```bash
+pnpm --filter @nullius/hep-mcp exec vitest run tests/research/sourceEvidenceBoundaries.test.ts tests/research/topicBoundary.test.ts tests/docs/docToolDrift.test.ts
+pnpm --filter @nullius/orchestrator exec vitest run tests/computation-feedback-boundary.test.ts
+```
+
+核对已移除的科学判词工具在两种 exposure mode 中均不可调用；主题视图只接受
+`timeline`、`evolution`、`all`；引用追踪区分返回、不可用和深度限制未请求的引用查询。
+`cross_validate` 只表示多个被追踪记录引用了同一候选，不表示独立科学核验或优先权。
+元数据统计须保留查询范围、样本与失败状态，不能把未获取的记录当作零。
+
+计算完成且产出恰好一个已声明的 `research_feedback.json` 时，只有顶层有效的
+`feedback_signal`（`success`、`weak_signal` 或 `failure`）可请求后续工作。
+其他 JSON 中同名字段、缺失或无效声明、多个声明文件、失败执行均不得推断反馈。
+当前结果必须记录 `basis: producer_declaration` 与绑定实际产物的 `declaration_ref`；
+后续执行须验证声明在 produced artifacts 内且当前字节仍匹配。
+没有该权限的历史记录仍可读取，但旧推断反馈不能授权新的执行。
+这些测试检查工具契约与执行权限，不验证声明的科学内容。
+
 外部项目边界的验收还应覆盖：从另一处运行时拒绝开发仓、尚未创建的仓内后代与仓目录别名，并确认拒绝发生在任何项目文件写入之前；同父目录的正常外部研究项目仍应可初始化。
 
 ## 0. 一次性准备
@@ -41,7 +78,7 @@ julia --startup-file=no --project=skills/julia-perf/scripts skills/julia-perf/te
 ### 0.0 先确认 front-door 角色
 
 - `nullius` = generic lifecycle + workflow-plan + main-report structural-validation front door
-- `research-harness` = Codex / Claude Code / OpenCode 的薄 external project skill；它只负责恢复项目真相、路由到 `nullius` / `research-team` / `markdown-hygiene` / `hep-mcp`、并要求结果折回 durable artifacts，不是新的 CLI 或第二套 control plane
+- `research-harness` = 宿主主 agent 的研究与接续指导：调查当前问题、有用的有限委派、结果类型核验、回答与保存下一步；项目采用正式独立成员与收敛流程时才路由到 `research-team`，生命周期仍归 `nullius`
 - `.nullius/HARNESS` = `nullius init` 写入的机器可读 runtime handshake；存在时 agent 必须先取得 `nullius status --json` receipt，再开始新工作、milestone 执行、closeout 或 handoff
 - `orch_*` = 同一 control plane 的 MCP/operator counterpart，不是第二个产品前门
 - `@nullius/hep-mcp` = 当前最成熟的 domain MCP front door
@@ -76,21 +113,42 @@ pnpm --filter @nullius/orchestrator exec vitest run tests/run-manifest.test.ts t
 
 每次 vitest 运行把 `TMPDIR` 指向一个专属临时根 `<系统临时目录>/ntest-<uid>/<标签>-<进程号>-XXXXXX/`（标签取包目录名中的字母数字与 `._`，截取前 6 个字符；为空时用 `tests`）（`ntest-<uid>` 必须是本用户所有、权限 0700 的真实目录，被预先放置的符号链接或他人目录会被拒绝）（名字刻意短：测试工具会在 `TMPDIR` 下建本地套接字，macOS 上套接字路径超过约 104 字节就无法建立）：每个测试都跑完（通过、跳过或待办）、没有失败、运行没有被中断（如监视模式下按 Ctrl-C）、命令的退出状态仍为成功（如覆盖率门槛未达标会使其失败）、且监视模式下此前各次重跑都干净时才删除；失败或中断则保留供检查（空目录也保留；唯一的例外是未被中断、退出状态干净、一个测试都没跑且临时根也是空的命令，如 `vitest list`，静默删除），其中 7 天无任何改动、创建它的进程已结束、且带有创建时写入的来源标记文件 `.nullius-test-root`（内容与格式完全吻合的普通文件）的，由之后的运行清除，没有标记或标记不符的目录一律保留；设 `NULLIUS_KEEP_TEST_TMP=1` 时一律保留。各包 `vitest.config.ts` 的 `globalSetup` 接入 `scripts/lib/vitest-test-temp-root.mjs`；`scripts/tests/vitest-test-temp-root.test.mjs` 锁定接线，并用真实的 vitest 3 与 4 各跑一次通过、失败与只列不跑。
 
+#### 工程质量与行数诊断
+
+工程规范与测试应服务科研正确性、可靠性、质量和效率。按实际改动审查职责边界、依赖与数据/控制流、关键不变量和失败路径，并运行对应的行为测试。规则的调整须说明实际收益并同步验证；减少形式性开销不改变原始证据、独立验证和科学结果验收要求。
+
+```bash
+make code-health-check
+python3 meta/scripts/check_loc.py --base-ref origin/main --json
+```
+
+`make code-health-check` 先生成行数报告，再执行新增类型逃逸与静默吞错的阻断检查。`check_loc.py --base-ref REF` 从 merge-base 到当前工作树选择仍存在的变更文件，包括已提交、staged、unstaged 与 untracked 变更的当前内容；也可用 `--files PATH...` 或 stdin 指定路径，stdin 的 NUL 分隔列表使用 `--null`。它报告支持后缀的手写源码 eLOC；非源码和声明的生成文件显式列入 `excluded`。报告没有大小阈值、strict 模式或行数豁免；退出码 `0` 只表示诊断成功，无可统计源码标为 `no_files`，输入、枚举或读取错误退出 `2`。行数是近似规模信息，不能自动判定代码质量、授予验收或要求拆分。
+
+行数报告选择 base→worktree 与 base→index 的路径并集，尺寸仍取当前工作树；变化量为 `0` 不代表 index 无改动或内容等价。基线为 `0` 也可能表示该路径原为 symlink/gitlink 等非源码对象，不能据此断言历史路径不存在。类型逃逸检查分别核验这两个快照，尚未暂存的安全改写不能遮蔽仍可提交的 index 违规。
+
+源码审查仍须覆盖自动检查未识别的类型逃逸、吞错和删/跳测试行为，以及职责、依赖和可测试性问题。只为通过检查而删/跳失败测试不可接受；对具体风险的修复和适用测试仍是验收条件。工程检查通过不构成研究结论的独立验证；科学验收继续使用下文对应的原始输入、执行证据和独立评审要求。
+
 #### 执行恢复与第三方 runner 契约
+
+DSH runner 的回归覆盖当前桌面 launcher、完整运行时字节绑定、隔离 profile、v4 会话与
+完整输出交付；假运行时测试验证拒绝路径，不能作为真实提供商可用性证明。宿主接入验收
+应分别记录规则实际加载、允许/拒绝的工具动作，以及指定会话的恢复；临时工具变量必须
+另行落盘后才可作为检查点。无额度或未连接的宿主记为 unavailable，不计通过。
+
 
 ```bash
 pnpm --filter @nullius/orchestrator exec vitest run tests/cli-run-workflow-recovery.test.ts tests/agent-runner-history-compaction.test.ts tests/cli-run-workflow.test.ts tests/agent-runner.test.ts tests/workflow-runtime.test.ts tests/nullius-cli.test.ts
 pnpm --filter @nullius/hep-mcp exec vitest run tests/contracts/inspireLiteratureProjectRoot.test.ts tests/toolContracts.test.ts tests/docs/docToolDrift.test.ts
-python3 -m pytest -q skills/kimi-cli-runner/tests skills/opencode-cli-runner/tests skills/review-swarm/tests/test_seat_budget.py skills/dsh-cli-runner/tests
+python3 -m pytest -q skills/kimi-cli-runner/tests skills/opencode-cli-runner/tests skills/qwen-cli-runner/tests skills/review-swarm/tests/test_seat_budget.py skills/dsh-cli-runner/tests
 ```
 
 使用虚构工具与临时项目验证真正进程死亡、未知副作用停止、已提交响应回放、暂停和审批续接。压缩测试保留约束与完整工具配对，过长指令不通过删约束恢复。INSPIRE 七种模式的 catalog、parser 与 dispatch 接纳共同参数并拒绝错误模式参数。runner 测试使用虚构 CLI，验证空输出、异常退出、最终长度截断、总调用/时间预算及本地进程树清理；这不证明真实 provider 可用或科研结果正确。
 
-Kimi/OpenCode 需要 Python 3.10 或更新版本；不满足时在调用模型之前拒绝运行。`--max-attempts` 是包括 fallback/续写的总 CLI 调用数，`--timeout-secs` 是包括 backoff 的总期限。review launcher 的同名预算统计每个 seat 的 runner 进程调用；Gemini 没有内层尝试数控制，不能把该统计声称为准确的底层 HTTP 请求数。每次调用保留 trace；`OUT.partial` 不算完成的 `OUT`。复制安装须重新从当前源码构建/安装并验证；本地定向检查不更新其他安装或已有外部项目。
+Kimi/OpenCode/Qwen 需要 Python 3.10 或更新版本；不满足时在调用模型之前拒绝运行。`--max-attempts` 是包括 fallback/续写的总 CLI 调用数，`--timeout-secs` 是包括 backoff 的总期限。review launcher 的同名预算统计每个 seat 的 runner 进程调用；Gemini 没有内层尝试数控制，不能把该统计声称为准确的底层 HTTP 请求数。每次调用保留 trace；`OUT.partial` 不算完成的 `OUT`。复制安装须重新从当前源码构建/安装并验证；本地定向检查不更新其他安装或已有外部项目。
 
 #### 本地个人插件与项目 MCP
 
-[`project-mcp`](../packages/project-mcp/README.md) 复用 canonical `handleToolCall` / `runCli`，目前暴露 16 个 `orch_*` 操作和 5 个 transport 工具，共 21 个。默认个人插件组合 project 21、HEP standard 52、idea 6，共 79 个不同工具名；非默认 HEP 模式或 provider 开关会改变 HEP 数量。[构建器](../packages/skills-market/docs/PERSONAL_PLUGIN.md) 生成不含本机路径的 Codex/Claude Code 清单，通过目标机器的 `nullius runtime mcp` 启动，不创建远端连接。普通 skills copy 安装同样不记录源机器目录。
+[`project-mcp`](../packages/project-mcp/README.md) 复用 canonical `handleToolCall` / `runCli`，目前暴露 16 个 `orch_*` 操作和 8 个 transport 工具，共 24 个。默认个人插件组合 project 24、HEP standard 47、idea 6，共 77 个不同工具名；非默认 HEP 模式或 provider 开关会改变 HEP 数量。[构建器](../packages/skills-market/docs/PERSONAL_PLUGIN.md) 生成不含本机路径的 Codex/Claude Code 清单，通过目标机器的 `nullius runtime mcp` 启动，不创建远端连接。普通 skills copy 安装同样不记录源机器目录。
 
 构建完成后运行以下针对性检查：
 
@@ -102,12 +160,19 @@ pnpm --filter @nullius/orchestrator exec vitest run tests/runtime-installation.t
 python3 -m pytest -q packages/skills-market/tests/test_personal_plugin.py packages/skills-market/tests/test_install_skill.py
 NULLIUS_REAL_PLUGIN_SMOKE=1 python3 -m pytest -q -s packages/skills-market/tests/test_personal_plugin_live.py
 pnpm --filter @nullius/project-mcp exec vitest run tests/research-loop.test.ts
+pnpm --filter @nullius/project-mcp exec vitest run tests/notebook-workflow.test.ts
 pnpm --filter @nullius/project-mcp exec vitest run tests/harness-invocation.test.ts
+pnpm --filter @nullius/project-mcp exec vitest run tests/search.test.ts tests/text.test.ts tests/documents.test.ts tests/source-tools.test.ts tests/source-tools-stdio.test.ts
+pnpm --filter @nullius/orchestrator exec vitest run tests/team-delegation-context.test.ts tests/team-unified-runtime-concurrency.test.ts tests/agent-runner-stop-reasons.test.ts
 ```
 
 真实迁移检查先构建一次插件与普通 skills copy 安装，再搬迁这两个既有产物及运行 checkout，删除原输出，配置新 CLI 和包外私有配置后运行。在临时外部项目初始化 `.nullius/HARNESS`、state 和项目 launcher，启动真实三个 server，仅发送 `initialize` / `tools/list`，检查工具无重名及进程 cwd；还执行复制后的 harness 帮助与 team scaffold。provider 数据目录也限于临时 fixture，不调用 provider 工具。研究闭环测试分别执行正常计算并登记已核验结果，以及篡改生产输出后拒绝错误的 operator pass。
 
 项目入口核验测试显式设置 `NULLIUS_HARNESS_VERIFY=on`，覆盖首次初始化、过期记录拒绝且无副作用、status 恢复、后台执行再次核验、精确重放、符号链接边界和 sampling 内部调用；不能依赖默认测试环境跳过核验后的结果。
+
+[原文工具验收](RESEARCH_TOOLS.md)应覆盖：字面 UTF-8 搜索的哈希/行列位置、预算与不完整扫描，文本行内及 PDF 页内 Unicode 字符窗口的哈希绑定接续，源文件变化后的拒绝，路径/特殊文件边界，以及扫描 PDF 无可提取文本时不宣称已读全文。真实 PDF 验收须安装并确认 `pdfinfo`、`pdftotext`、`pdftoppm`，检查按页原文和实际 PNG image blocks、尺寸、字节数与 SHA-256；只跑缺依赖负例或跳过真实 Poppler 用例，不构成 PDF 能力验收。
+
+真实 stdio SDK 测试还检查原文工具经 sampling loopback 返回可用文本、官方 `toolUse`/`endTurn` 结束原因、只声明 basic sampling 时拒绝需要 `sampling.tools` 的委托，以及图像委托明确 `unavailable`。团队用例验证结构化 `handoff_payload` 的继承/覆盖/清空、`max_parallel` 默认 4 且范围 1–16、排队仍为 pending、启动前 deadline、部分失败保留与 stage 阻断。这些测试中的模型响应为确定性 fixture；通过不证明真实宿主连接、模型研究质量或正在运行的外部进程会被队列 deadline 杀死。
 
 交付验收必须区分传输和研究：后台变更使用稳定 `delivery_id`，`outcome_unknown` 不得自动重试，`finalizing` 等待项目锁释放，`committed` 只代表原响应已持久化。还须保留项目文件越界拒绝、本地主机审批、缺少 sampling 时 `unavailable` 等边界；本机脚本不是 OS sandbox 中的代码。上述本地验收不证明 ChatGPT Chat/Work 或 Claude 宿主已接通，tunnel/app ID 和对应宿主验收仍待用户配置。
 
@@ -135,7 +200,7 @@ HEP_LIVE_SMOKE=1 pnpm -r test
 
 ### 0.3 在 MCP 客户端里接入当前 domain MCP front door
 
-当前公开 MCP contract 是本地 stdio 进程启动、tool `inputSchema`、紧凑 JSON/text tool result、没有 prompts。MCP env 里的路径是本地文件 / artifact / cache root，不是 URI/protocol 设置。Remote HTTP/OAuth、registry publishing 与独立 root MCP server 不属于当前验收面。
+当前公开 MCP contract 是本地 stdio 进程启动、tool `inputSchema`、有界 JSON/text 结果及显式请求的项目 PDF image content、没有 prompts。MCP env 里的路径是本地文件 / artifact / cache root，不是 URI/protocol 设置。Remote HTTP/OAuth、registry publishing 与独立 root MCP server 不属于当前验收面。
 
 最小配置示例：
 
@@ -198,8 +263,8 @@ EOF
 
 **预期**
 
-- `standard` 模式工具数为 `52`
-- `full` 模式工具数为 `58`
+- `standard` 模式工具数为 `47`
+- `full` 模式工具数为 `51`
 - `bad` 为空数组
 
 ### 0.5 可选依赖：Zotero / PDG
@@ -226,6 +291,7 @@ EOF
 
 - 返回成功
 - 能看到当前工具模式、基础配置或健康摘要
+- 在已初始化的可写项目中传入 `project_root` 和 `check_inspire: false`，即使尚无 HEP 数据目录和下载目录，两个 `writable` 字段及 `ok` 也应为 `true`。检查后这两个目录仍应不存在。
 
 ## 2. 项目内输出目录
 
@@ -290,12 +356,13 @@ EOF
 **调用**
 
 ```json
-{ "mode": "get_paper", "recid": "1833986" }
+{ "mode": "get_paper", "recid": 1833986 }
 ```
 
 **预期**
 
-- 返回单篇论文的结构化元信息
+- 数字 `1833986` 与字符串 `"1833986"` 应返回同一篇论文的元信息。超过 9007199254740991 的编号须以字符串传入。
+- `lookup_by_id` 查询未收录的标识符时应返回 `NOT_FOUND`、`retryable: false` 和所查询的标识符。若只知道题名或作者，先用 `inspire_search` 找到目标记录。
 - `get_paper` 不需要 `size`
 - `lookup_by_id` 语义上只传 `identifier`；agent 误带的 `size` 会被忽略，但不要主动附带
 - `get_author` 语义上只传 `identifier`；agent 误带的 `size` 会被忽略，但不要主动附带
@@ -305,12 +372,13 @@ EOF
 **调用**
 
 ```json
-{ "mode": "timeline", "topic": "pentaquark", "limit": 10 }
+{ "mode": "timeline", "topic": "<topic>", "time_range": { "start": 2020, "end": 2025 } }
 ```
 
 **预期**
 
-- 返回 timeline / evolution 相关摘要
+- 只接受 `timeline`、`evolution`、`all`；`emerging` 和其评分参数已移除。
+- 返回有界元数据摘要，样本及查询状态应按 [source-access 契约](../packages/hep-mcp/README.md#research-judgment-and-source-access) 核对。论文数量、样本引用数和按引用排序的记录不构成科学质量、新颖性或优先权判断。
 
 ### 3.4 stateful literature workflow consumers
 
@@ -335,7 +403,7 @@ nullius workflow-plan \
   --topic "bootstrap amplitudes"
 ```
 
-`research_brainstorm` durable harness 持久化 brainstorm context、candidate angles、screening matrix、single recommendation 与 `next_contract` artifact hints。`.nullius/state.json#/plan` 是机器 SSOT，`.nullius/plan.md` 只是派生 read model；`next_contract` 可以建议后续 recipe，但不会自动启动重流程，也不依赖 host-native thinking process。它是 planning-only harness：持久化的 `research_brainstorm.*` step tools 是 handoff authority，不是内置 runnable tool chain。它不是 idea-engine、不是 full research-team、不是新的 root front door。
+`research_brainstorm` durable harness 持久化上述内容的步骤和 artifact hints；brainstorm context、candidate angles、screening matrix、single recommendation 与 `next_contract` 正文由宿主撰写。`.nullius/state.json#/plan` 是机器 SSOT，`.nullius/plan.md` 只是派生 read model；`next_contract` 可以建议后续 recipe，但不会自动启动重流程，也不依赖 host-native thinking process。它是 planning-only harness：持久化的 `research_brainstorm.*` step tools 是 handoff authority，不是内置 runnable tool chain。它不是 idea-engine、不是 full research-team、不是新的 root front door。
 
 > Maintainer / eval / regression only:
 >
@@ -348,9 +416,11 @@ nullius workflow-plan \
 **预期**
 
 - `nullius workflow-plan` 仍是唯一 installable public high-level literature entrypoint
+- 三个 checked-in recipe 必须同时通过 runtime Zod 与完整 Draft 2020-12 JSON Schema 校验；`task_kind` 为真实 step 契约的一部分。`workflowRecipes.test.ts` 使用 Ajv 校验完整对象，不能只通过 `anyOf` 分支后跳过父级约束。
+- 解析只证明固定步骤、参数替换和 capability/tool 映射。`research_brainstorm` 的五步均为 planning-only；plan/artifact hints 的存在不证明研究内容已生成，也不证明 provider 已配置、来源已阅读或后续 record IDs 已从搜索结果接入。
 - lower-level checked-in runner / resolver / front-door coverage 仍能证明 `literature_gap_analysis` recipe、seed-search 解析、analyze-step wiring 与 live CLI truth
 - literature saturation contract 还应保留覆盖每个 declared query 的有界 provider request/page-or-cursor/continuation 账本（known total 完整、末次 continuation exhausted）、逐候选 discovery/disposition、逐 core source bibliography reconciliation、exact-SHA archived canonical-identity provenance 与 coverage-debt 语义、每个 reconciliation candidate 的 source-text method-screening disposition，以及 source-grounded method-family audit/citation-graph coverage；展示 URL 只有在同时是已归档 canonical id/alias 时才参与 identity join；两个 summary receipt 必须绑定同一个 project-root-bounded exact-SHA ledger，并由 writeback 从详细内容重算，缺少任一项时不得把 bounded traversal 的停止状态提升为 `saturated`
-- `research_brainstorm` durable harness 通过同一个 entrypoint 验证 harness-step 解析、artifact hints、state plan 与 read-model 恢复；它输出后续 handoff contract，但不自动启动重流程
+- `research_brainstorm` durable harness 通过同一个 entrypoint 验证 harness-step 解析、artifact hints、state plan 与 read-model 恢复；它记录后续 handoff 的步骤和产物提示，contract 正文由宿主撰写，但不自动启动重流程
 
 ---
 
@@ -430,14 +500,40 @@ literal artifact filenames containing `%` or `?`, wrong-file URI matches, and
 headline convergence without a human rewrite. These link tests establish
 structural navigation only.
 
+The notebook guidance drift checks compare generated project instructions, active
+team inputs, rendered adjudication guidance, public budget descriptions and CLI
+help against executable review defaults. They
+include controlled outdated-limit and incomplete-original-review regressions.
+Public init, refresh preview, refresh and runtime-only refresh must preserve
+custom `AGENTS.md` and host instructions byte-for-byte, including modes and CRLF.
+The [existing-project update](QUICKSTART.md#updating-existing-project-guidance)
+uses a separate template preview and explicit merging.
+
+```bash
+pnpm --filter @nullius/orchestrator exec vitest run tests/notebook-review-guidance.test.ts tests/notebook-review-batches.test.ts
+python3 -m pytest -q packages/project-contracts/tests/test_scaffold_contract.py packages/project-contracts/tests/test_scaffold_preserves_user_contract.py
+python3 -m pytest -q skills/research-team/tests/test_notebook_capacity_prompt_drift.py skills/research-team/tests/test_build_adjudication_response.py
+```
+
 Content-review acceptance checks must additionally cover real reviewer dispatch,
 bounded original-text calls under one hard budget and no automatic retry, full UTF-8 notebook
-snapshot identity including the automatic block, declared dependency hashes,
+snapshot identity for all original content, declared dependency hashes,
 and edits not represented by a commit. A report needs complete per-section
 coverage and source-anchored reasons on derivations, logic, notation, definitions,
 assumptions and conventions. Include missing, partial, failed, unavailable,
 invalid and stale reports as negative controls; changing either the notebook
 or a dependency must invalidate current acceptance while keeping history readable.
+
+User-notebook regression coverage must execute real init, reconnect, stamp,
+result adoption and validity commands while checking that user bytes and modes
+are unchanged. Historical blocks never supply authored evidence links. Confirm
+Chinese and dated scientific notes need no hidden stamps or English tokens, while
+missing current artifacts, invalid current results and stale or incomplete reviews
+still prevent closeout. Void a referenced auxiliary run after an accepted review:
+check and fold must refuse its old acceptance. A fresh review can assess historical
+failure discussion, and an unrelated run event must not force another review.
+Cover single-call, batched and resumed paths; controlled reviewer fixtures establish
+transport and acceptance boundaries, not real-model scientific judgment.
 
 Include notebooks individually above 1 MiB, recursively linked text files
 individually below that size with a larger total closure, UTF-8/formula boundaries,
@@ -461,8 +557,8 @@ content acceptance is absent. Fixtures and mocked dispatch test these contracts;
 they do not establish scientific correctness or substitute for executing a real
 reviewer on a research notebook.
 
-Valid UTF-8 text remains text regardless of size; Markdown links are discovered
-recursively. Binary or invalid UTF-8 linked files are immutable `opaque_links`
+In the default recursive profile: Valid UTF-8 text remains text regardless of size; ordinary Markdown evidence links are discovered
+recursively; explicit `"nullius-navigation"` link titles declare navigation only. Binary or invalid UTF-8 linked files are immutable `opaque_links`
 snapshots and hash locators, not read evidence. Every opaque path/hash needs a
 specific `opaque_sources` assessment; a required unread source prevents acceptance.
 Notebook and explicit dependencies require strict UTF-8 and LF or CRLF endings.
@@ -475,7 +571,7 @@ conservative token upper bound. A larger explicit byte packet requires captured
 backend token usage when that bound exceeds the window; missing capacity evidence,
 observed backend compaction or delivery failure supplies no acceptance.
 
-Larger materials use original UTF-8 intervals with adjacent original context,
+In that recursive profile, larger materials use original UTF-8 intervals with adjacent original context,
 followed by a joint audit receiving the COMPLETE original notebook and text
 dependencies. All intervals and the joint audit must be complete and fresh;
 selected quotations or summaries cannot replace this original input. The default
@@ -489,6 +585,9 @@ never rewrites old evidence. If the full joint input does not fit the backend,
 raise an available backend's request budget or leave the review incomplete.
 Only tool mode `none` is accepted. Multiple batches are one semantic review;
 they do not establish independent confirmations or a cross-family quorum.
+
+With `--evidence-manifest <project-relative JSON>`, declared evidence uses a different material organization: the complete notebook and every declared primary text original are read, reference candidates remain explicit unread provenance until adjudicated, and the final integration receives the complete notebook plus canonical source-review evidence and byte-checked original excerpts. Every notebook section and primary interval must be covered. Every discovered reference is re-adjudicated; a necessary unread source or additional-context request prevents acceptance. This profile never claims the entire recursive history was read. Real tool-mode-none execution, capacity evidence, freshness and immutable history requirements still apply.
+
 
 Converged folds invoke the same unscoped `nullius notebook check --json` required
 for final file closeout. `none` declarations and a missing launcher grant no
@@ -505,16 +604,70 @@ Exercise the real audited `files_written` path: accepted source must match the m
 
 Capacity evidence requires an adjacent runtime observation of the actual successful invocation, including requests that fit the conservative byte bound. The local runtime binds the complete original request, actual report locator, working directory and captured bytes using its host authority; recalculating project artifact hashes cannot create that observation. Verification trusts the runtime and owning OS account, and does not authenticate provider truth or scientific correctness. Historical unsigned records remain readable, but cannot supply new capacity acceptance; they are never retrospectively signed.
 
-Interrupted notebook reviews resume in a fresh run from immutable intake and batch checkpoints, retaining original bytes and rechecking current material. Only completed, fresh, runtime-observed primary interval receipts can be reused; the complete-original joint audit is always executed again. Missing closure, stale sources or incomplete operations remain unavailable or incomplete. Member reproduction evidence requires an authenticated actual producer episode and the complete source/data inputs bound to the executed command; declared inputs and bounded static discovery do not prove arbitrary filesystem activity.
+Interrupted notebook reviews resume in a fresh run from immutable intake and batch checkpoints, retaining original bytes and rechecking current material. Only completed, fresh, runtime-observed primary interval receipts can be reused; the selected profile’s final audit is always executed again. Missing closure, stale sources or incomplete operations remain unavailable or incomplete. Member reproduction evidence requires an authenticated actual producer episode and the complete source/data inputs bound to the executed command; declared inputs and bounded static discovery do not prove arbitrary filesystem activity.
 
 Runtime observations bind the actual report location, so copying signed capture bytes cannot authenticate a new invocation elsewhere. Member episodes freeze every observed file into durable original storage before publication; successful workspace cleanup preserves subsequent verification. Records lacking these bindings remain readable and unavailable for new acceptance.
 
-Member origin trusts the configured runner and owning host runtime: the complete runner bytes are recorded, but no runner allowlist or provider attestation is claimed. Offline or injected host execution establishes a local process/callable observation; actual provider capacity evidence requires the corresponding CLI capture. The canonical team cycle performs a postflight source assessment and a separate fresh assessment at the final consumer; both use the configured assessor request/execution budgets.
+Member origin trusts the configured runner and owning host runtime: the complete runner bytes are recorded, but no runner allowlist or provider attestation is claimed. Offline or injected host execution establishes a local process/callable observation; actual provider capacity evidence requires the corresponding CLI capture. For an eligible full-access candidate, the canonical team cycle performs one fresh source assessment at final convergence with the configured assessor request/execution budgets. Postflight retains structural and isolation checks. The final consumer accepts only its current checker subprocess stdout and exit status, never a stored diagnostic verdict; each later eligible convergence check executes a fresh assessor again.
 
 The owning account can read the authority key, including code executed by a member under that account; this authenticates against non-executing artifact tampering, not hostile same-account code. No OS sandbox or provider attestation is supplied.
 
 The configured token window is frozen before the original reviewer subprocess starts and bound into its authenticated runtime observation. Changing historical window metadata cannot admit that receipt. Older observations without this policy remain readable and require a fresh execution for capacity acceptance.
 
-Local directory links leave notebook dependency closure pending and prevent acceptance. The complete-original joint audit requires exact substantive original-byte anchors for every interval; a reasoning checkbox alone cannot supply coverage.
+Unmarked local directory links leave notebook dependency closure pending and prevent acceptance. A pure navigation link may use the Markdown title `"nullius-navigation"`: its local target must exist, but its content is not frozen or followed unless also linked as evidence or explicitly supplied with `--dependency`. The declaration stays visible in the complete original text and review inventory; a required unread source still prevents acceptance. The complete-original joint audit requires exact substantive original-byte anchors for every interval; a reasoning checkbox alone cannot supply coverage.
 
-Research storage fixtures cover semantic classifications, aggregate admission, bundle content detection, duplicate index objects, zero-write inspection and byte-exact restoration. Run `python3 -m pytest skills/research-harness/tests/test_run_storage.py` and `pnpm -C packages/orchestrator test tests/run-origin-foreign-paths.test.ts tests/validity-ledger.test.ts tests/traceability-stage3.test.ts`. See [Research output storage](RUN_STORAGE.md).
+Research storage fixtures cover semantic classifications, aggregate admission, bundle content detection, duplicate index objects, zero-write inspection and byte-exact restoration. Run `python3 -m pytest skills/research-harness/tests/test_run_storage.py skills/research-harness/tests/test_storage_closeout.py` and `pnpm -C packages/orchestrator test tests/run-origin-foreign-paths.test.ts tests/validity-ledger.test.ts tests/traceability-stage3.test.ts`. See [Research output storage](RUN_STORAGE.md).
+
+## Workflow evidence acceptance
+
+Run the receipt/CLI tests, workflow policy tests and adapter tests when changing the execution-to-evidence boundary:
+
+```bash
+pnpm --filter @nullius/orchestrator exec vitest run tests/workflow-acceptance.test.ts tests/cli-run-workflow-acceptance.test.ts tests/cli-run-workflow.test.ts tests/cli-run-workflow-recovery.test.ts
+pnpm --filter @nullius/literature-workflows test
+python3 -m pytest skills/research-team/tests/test_workflow_literature_acceptance.py
+```
+
+These cases cover current committed-output identity, missing and unavailable evidence, explicit checker failures, partial/skipped execution, receipt substitution, changed plans/checkers/nested files and read-only freshness. A completed-plan recheck must issue zero provider calls. Fixture passes verify tooling mechanics; they establish no scientific result or semantic full-text reading.
+
+## Instruction context checks
+
+Research continuity and final-consumer assessment regressions:
+
+```bash
+pnpm --filter @nullius/orchestrator exec vitest run tests/task-brief-navigation.test.ts tests/notebook-run-links.test.ts tests/notebook-result-links.test.ts
+python3 -m pytest -q skills/research-harness/tests/test_task_brief.py skills/research-harness/tests/test_task_brief_aliases.py skills/research-harness/tests/test_task_brief_restore.py packages/project-contracts/tests/test_research_continuity_guidance.py skills/research-team/tests/test_final_assessment_execution.py
+python3 -m pytest -q skills/research-team/tests/test_check_project_charter.py
+node scripts/check-independent-reproduction-anti-drift.mjs
+```
+
+These exercise explicit Current Status selection in file mode, hidden/history
+exclusion, exact authored-body restoration, changed or missing inputs, path and
+identity aliases, and read-only continuation without scientific acceptance.
+Generated-guidance checks distinguish a scoped answer from project adoption,
+result registration, notebook folding, report promotion and milestone closeout;
+load-bearing claims retain their result-specific checks. The charter tests use
+the actual canonical scaffold: meaningful reviewed goals pass without an optional
+KB or commitments form, while missing goals and unreviewed status still fail.
+Final-consumer fixtures require a fresh execution, reject stale or edited
+diagnostics and preserve two independent confirmations. A later eligible check
+must execute again. These are offline implementation checks, not model-quality
+benchmarks. Research evaluations should compare scientific correctness, error
+detection, completed work, continuity and total resource use on the same tasks.
+
+Run `pnpm check:instruction-context-anti-drift` for the four compact skill entries
+and scaffold `AGENTS.md`. Marked local references must exist inside their payload
+root; missing, escaped, cyclic, symlink or invalid references fail. Unmarked dead
+files cannot satisfy the science-contract locks. Entrypoint byte ceilings prevent
+accidental re-expansion; they are maintenance limits, not universal model context
+percentages. Notebook budget negative controls mutate the reachable guidance.
+
+Run `python3 -m pytest skills/research-harness/tests/test_task_brief.py` for authored
+body/mode preservation, explicit-source hashes, stale/missing sources, migration,
+invalid metadata and path rejection. Byte freshness is distinct from content
+verification. Scaffold refresh and public init tests preserve customized
+`research_guidance.md` as well as `AGENTS.md` and host rules. The recovery read-order test checks both small startup navigation and preservation
+of applicable constraints/original-source requirements. The brief helper help
+requires an absolute project root. Copy-installed skills
+must include referenced documents, the optional brief template and the standalone helper; symlink checks alone
+do not verify this distribution surface.

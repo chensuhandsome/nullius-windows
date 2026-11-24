@@ -3,13 +3,134 @@
 Notable changes to nullius. The format follows
 [Keep a Changelog](https://keepachangelog.com/). The project is **pre-1.0**: all
 workspace packages move in lockstep on a single `0.x` version, breaking changes may
-occur in any `0.x` release, and there is no API-stability promise yet. Dated, tagged
-releases begin with 0.6.0, the first release archived on Zenodo; `CITATION.cff` names
+occur in any `0.x` release, and there is no API-stability promise yet. The first release
+archived on Zenodo is 0.6.0 (0.3.0 and 0.4.0 carry git tags only; 0.5.0 was never
+tagged); `CITATION.cff` names
 the version to cite.
 
 ## [Unreleased]
 
-## [0.6.0] - 2026-10-16
+## [0.6.1] - 2026-11-22
+
+The host agent leads research, writing and review. Nullius retains run provenance,
+applicable approvals, explicit result adoption and verification records.
+
+### Added
+- Project MCP can search project files, read source lines and inspect PDF pages
+  with bounded results and source identities. PDF page images require Poppler.
+- Research output policies classify literal paths for Git, the content store or
+  local storage. Origin capture checks newly changed outputs before writing a
+  snapshot. Storage tools provide read-only inventory, dry-run exclusions for
+  tracked bulk outputs and previewable cleanup of finished scratch directories.
+- The skill catalog includes Qwen Code headless dispatch, nuclear-data lookup
+  and offline scientific data app guidance. Julia performance guidance covers
+  factor-preserving operator construction and matched benchmarks. Research
+  storage guidance describes how to inventory and verify retained evidence
+  before removing historical outputs.
+
+### Changed
+- Literature workflow documentation now describes the three fixed recipes,
+  caller-supplied inputs and planning-only brainstorm steps. Result registration
+  is distinguished from notebook integration and scientific closeout.
+- Citation tracing now returns metadata source candidates, observed citing-record
+  counts and reference-lookup status. Its `cross_validate` filter means multiple
+  citing records, without asserting independent confirmation or priority.
+  Unknown-year references remain eligible.
+- Topic views preserve every requested period, with explicit query failures,
+  sample sizes and continuation status. Timeline citation sums are labeled as
+  sample sums; total counts use the same topic and interval. Evolution reports
+  comparable publication-count changes and requested-interval recent counts,
+  without categorical trend or momentum judgments.
+- Computation completion no longer invents a scientific success/failure,
+  finding, priority change, support edge or writing follow-up. A completed
+  execution can request follow-up work through one declared output named
+  `research_feedback.json` with a top-level `feedback_signal` of `success`,
+  `weak_signal` or `failure`; arbitrary JSON files are not scanned for feedback.
+  New results bind `basis: producer_declaration` and `declaration_ref` to the
+  produced declaration; follow-up execution checks that binding and its current
+  bytes. Historical inferred feedback remains readable but cannot authorize new
+  execution. Producer declarations are not verification. Execution memory no longer writes
+  scientific quality or validation flags, and repeated executions no longer
+  manufacture a skill-generalization confidence score.
+- `referee-review` now guides actual independent host review or the existing
+  `review-swarm` runner, which its package declares as a dependency. Refresh
+  copied skill installations to remove the retired generator; saved historical
+  review artifacts remain readable and exportable without reinterpretation.
+- Numerical guidance selects useful, reducible error contributions by their
+  effect and cost, including subdominant contributions. A large accuracy margin
+  is informational, and identical refinement values do not by themselves prove
+  that a numerical setting was ignored. Independent confirmation wording is
+  aligned across the harness, numerical skill and team prompts.
+- The research notebook is a user-owned scientific document. New scaffolds
+  contain scientific sections and prompts; agent protocols remain in reachable
+  project guidance. Lifecycle operations preserve notebook bytes, including old
+  machine blocks. Useful dated observations and failed approaches are welcome.
+- Scientific writing is owned by the host agent. The writer skill now guides
+  original-source reading, integration into the actual manuscript, applicable
+  scientific checks and delivery; its scaffold creates an empty paper only.
+- Notebook review distinguishes explicit `nullius-navigation` links from scientific
+  dependencies. Full original text remains reviewed, ordinary evidence links
+  remain recursive, and explicitly requested files remain frozen. Existing
+  notebooks require an authored navigation update; history is not rewritten.
+- Stage outputs are linked from Current Status and actually received and handed
+  off by the host, using existing reports, writer manifests and bundle tooling.
+
+### Fixed
+- INSPIRE tools accept numeric record IDs and report missing records as
+  non-retryable. HEP health checks and download cleanup handle missing directories.
+- Headless runner adapters check supported CLI interfaces and correctly handle
+  changed output protocols, session resume and single-attempt output capture.
+- Workflow recipe JSON Schema and generated TS/Python contracts now require
+  `task_kind`, matching the runtime contract and all three checked-in recipes.
+  Tests use the existing Ajv Draft 2020-12 validator to check the full schema.
+- MCP-only hosts can author the user notebook with the existing hash-checked
+  file writer and invoke canonical full-text review/check through typed
+  `project_cli` actions. Reviewer and durable-delivery budgets remain distinct;
+  the retired notebook-sync action is no longer advertised.
+- Notebook review binds the validity state of runs referenced by its frozen
+  sources, so a relevant void or supersession invalidates earlier acceptance
+  without making unrelated ledger activity invalidate the review. The same
+  binding applies to single-call, batched and resumed reviews.
+- Repeated complete historical notebook state blocks cannot satisfy the human
+  result-link requirement; scientific text between blocks remains visible.
+- Paper bundles preserve project-relative layouts, include the human notebook
+  and referenced local material across runs, and check dependencies before
+  publication. Explicit stage selections can omit unrelated project documents.
+- Writer builds use the manifest's TeX entry point, reject unavailable or failed
+  requested compilation, and do not advertise a stale PDF as a current build.
+  Export rechecks recorded project-input and output hashes before packaging a
+  compiled paper; changed source, bibliography, figures or PDF require a rebuild.
+- Main-report validation accepts Markdown link titles and requires actual
+  evidence links; inline-code examples cannot satisfy clickable-link checks.
+- arXiv staging rejects missing or escaping dependencies and preserves prose
+  adjacent to bibliography commands. Markdown hygiene preserves legitimate
+  aligned/matrix line breaks.
+
+### Removed
+- The packet-only referee verdict generator, its private schema and sample
+  packet. No replacement deterministic scientific-verdict generator is added.
+- PDG's optional lifetime-to-width derivation and `allow_derived` parameter.
+  Queries return database records; a missing width remains missing. Research
+  calculations belong in the project with explicit physical assumptions and
+  source locators. Raw records and historical derived artifacts remain readable.
+- HEP evidence grading, critical analysis, review classification, theoretical
+  conflict mapping, citation-stance scoring and crossover-topic prediction
+  tools, along with their private scoring and sampling pipelines. Raw search,
+  sources, citation contexts and source-identity tools remain available.
+- Emerging-paper ranking, its momentum/disruption/new-entrant modules and their
+  private options/configuration. Topic metadata retains timeline/evolution/all.
+- The retired critical-review step from the optional gap recipe and its action
+  mapping; citation-network work now follows the topic metadata step directly.
+- `nullius notebook sync` and its automatic lifecycle writers; paragraph-order
+  and English-word heuristics for judging notebook prose; mandatory hidden
+  section version stamps. Full scientific review, original-source identity and
+  current-result validity checks remain required.
+- The fixed writer/auditor chapter pipeline, keyword-based LaTeX evidence gate,
+  first-formula/first-figure composition, keyword-overlap discussion verdicts,
+  and ambiguous double-backslash math auto-rewrites. Existing scientific
+  verification and traceability tools remain available.
+
+## [0.6.0] - 2026-10-17
 
 First archived release. Nullius is positioned as an evidence-first harness for
 agent-assisted research; this release gathers everything since 0.5.0 (the lockstep
@@ -17,6 +138,7 @@ version was never tagged). Headline themes: result traceability from run to comm
 a machine-enforced closeout discipline for notebooks and results, fail-closed review
 and delegation contracts, and consolidated run authority under one canonical
 `artifacts/runs/<run_id>/` layout.
+
 ### Removed
 - **hep-mcp modules no entry reaches.** The hep-mcp source modules that no
   declared entry or launcher imported (the removed discovery, preprocessing,
@@ -52,15 +174,15 @@ and delegation contracts, and consolidated run authority under one canonical
   gives the rule for resolving historical `hep://projects/...` references to files
   and where to read the catalog item format.
 
-
 ### Added
 - **Large run outputs outside git history.** `skills/research-harness/scripts/run_storage.py`
   gains `check`, `stow`, `verify`, `materialize` and `inventory`: bulk outputs under
   the run roots are stowed in a content store outside any git worktree, the
   originals become read-only, and a tracked hash manifest records them; `verify`
   and `materialize` restore or check them in another worktree. Research outputs
-  are classified before a commit or a pinned snapshot admits them, so bulk run
-  products stay out of history behind the manifest; a reserved file name alone
+  are classified when a pinned snapshot admits them, and by `check --staged --strict`
+  where the project calls it from its own pre-commit hook (nullius installs no hook),
+  so bulk run products can stay out of history behind the manifest; a reserved file name alone
   grants no exemption, only a validated stow record does. Two read-only commands
   measure before anything is deleted: `worktree-check` says whether removing a
   linked worktree loses anything (uncommitted and hidden tracked changes, a
@@ -106,8 +228,9 @@ and delegation contracts, and consolidated run authority under one canonical
   `package.json` and the README had declared is now present as a `LICENSE` file.
 - **Result traceability (`nullius trace`, `nullius result`, `nullius current`).** Every
   run binds to the exact code state at launch through origin stamps written at every
-  mandatory machine moment (computation front door, team-cycle run creation, result
-  registration at convergence); an append-only validity ledger records `void` /
+  mandatory machine moment (computation front door, team-cycle run creation; result
+  registration at convergence requires a stamped run); an append-only validity ledger
+  records `void` /
   `supersede` / `reinstate` rulings with normalized, existence-checked run ids; a
   results registry (`nullius result set-current`) names the producing run per headline
   result; `nullius current` renders the whole current-version answer as prose.
@@ -174,9 +297,11 @@ and delegation contracts, and consolidated run authority under one canonical
 - **skill `literature-to-package`**: turn a literature survey into the verified initial
   framework of a software package (skeleton, typed API stubs, equation inventory,
   conventions table, frozen reference values).
-- **Cross-family review by construction**: review-swarm, derivation-verify, and
-  paper-reviser stop hard-coding a claude+gemini pair and frame reviewers as "the
-  host's own family plus a different family"; Kimi Code is a first-class runner and a
+- **Cross-family review by construction**: review-swarm stops hard-coding a
+  claude+gemini pair and frames reviewers as "the host's own family plus a different
+  family"; paper-reviser accepts any of claude, gemini, codex, opencode and kimi as
+  writer and auditor (defaults remain claude + gemini) and advises a family other than
+  the writer's; Kimi Code is a first-class runner and a
   supported skills-market host.
 - **Reuse-or-deviate gate and review-verification contract clauses**: per-asset
   reuse-or-deviate decisions, independent recomputation from blind inputs with the
@@ -360,6 +485,60 @@ and delegation contracts, and consolidated run authority under one canonical
   reclaimed and genuinely held locks surface as `store_locked` instead of a
   misleading schema error; `build_pack.py` fails closed on unknown dedup
   decisions, misaligned report indexes, and overrides that match nothing.
+- **numerical-reliability-gate: G0 sets the required accuracy before any
+  refinement.** Executing agents spent computation and review rounds on
+  precision the result did not need, and the gate had no stopping point of its
+  own. G0 (before G1) asks for the accuracy each use of the quantity requires,
+  with its source (display digits, downstream sensitivity, comparison
+  uncertainty; never method capability), takes the strictest use, budgets the
+  error by source and combines it into a total by a stated rule (linear sum by
+  default, quadrature only with an independence basis). A result is reliable
+  (now G0-G10) only when the total error is at or below the required accuracy;
+  refinement goes to the dominant source and stops when the total meets the
+  target. A stricter check on the quantity itself is recorded, not blocking;
+  diagnostic thresholds (residual, invariant, precondition) keep blocking and
+  carry a `threshold_basis`. Every matrix row carries `required_accuracy` and
+  `error_budget`. The new `scripts/check_reliability_matrix.py` checks a matrix
+  with exact rational arithmetic on numbers that are zero or between 1e-300 and
+  1e300 in magnitude, written in at most 400 characters. research-team member
+  and verifier prompts stop at the required accuracy and report over-tight
+  gates as findings. The lock `check-required-accuracy-anti-drift.mjs` and the
+  checker tests run in CI. **Migration:** a reliability matrix written before
+  G0 lacks `required_accuracy` and `error_budget`, which the checker requires
+  on every row, and `total_error` for rows marked reliable; its rows need them
+  before they are treated as reliable.
+- **Skill frontmatter lock.** `scripts/check-skill-frontmatter-anti-drift.mjs`
+  (in CI) parses the frontmatter of every tracked `skills/<dir>/SKILL.md` as
+  YAML and fails, naming file and reason, when the block is missing, not on
+  line 1 or contains a `---` sequence; when `name` differs from the directory,
+  uses characters other than lowercase letters, digits and hyphens, exceeds 64
+  characters or contains a reserved word (one recorded exemption,
+  `claude-cli-runner`); when `description` is empty, over 1,024 characters or
+  ends with a newline; when a key falls outside the six portable fields; or
+  when the file is not valid UTF-8. `js-yaml` becomes a root devDependency.
+- **MCP tool annotations, titles, server instructions and structured
+  results.** Every MCP server lists readOnly/destructive/idempotent/openWorld
+  hints derived from its risk table plus a per-tool behaviour hint (shared
+  helpers `riskToAnnotations` / `toolAnnotationsFor`), a title per tool and a
+  one-paragraph `instructions` string, and returns `structuredContent` beside
+  the unchanged text block when the result is a JSON object (never for
+  markdown, strings, arrays, error results or hard-truncated text, nor for the
+  stored inner result that a project-mcp delivery replay returns). hep-mcp takes re-exported
+  tools' risk levels and hints from the sibling packages' own tables. Tools
+  that write files move from `read` to `write`: `openalex_search`,
+  `openalex_filter`, `openalex_citations` (bulk JSONL export), `pdg_get`,
+  `pdg_get_decays`, `pdg_get_measurements`, `pdg_batch` (result artifacts),
+  `zotero_local` (attachment download copy), `inspire_validate_bibliography`
+  and `inspire_detect_measurement_conflicts`; tools that replace files in place
+  and the idea campaign topup/pause/resume tools carry the destructive hint.
+  No `_confirm` requirement changes.
+- **CI locks for publishable-package dependencies and source language.**
+  `check-publishable-package-deps-anti-drift` (PLUG-01: rep-sdk has
+  no internal dependency; pdg-mcp and zotero-mcp may depend on
+  `@nullius/shared` only; shared stays a leaf) and
+  `check-source-language-anti-drift` (LANG-01: no CJK characters in `.ts` and
+  `.py` files under `packages/*/src`, outside `generated/` directories and lines
+  marked `CONTRACT-EXEMPT: LANG-01`).
 
 ### Changed
 - **Staged writes at fresh exclusive names.** Shared atomic writes, the openalex
@@ -460,6 +639,255 @@ and delegation contracts, and consolidated run authority under one canonical
 - **Version surfaces** move in lockstep to 0.6.0 (all workspace packages, the Python
   project-contracts package, MCP server descriptors, the compatibility matrix, and the
   skills-market catalog ranges).
+- **Claude CLI lanes no longer load the operator's instructions or memory.**
+  Auto memory and instruction files record earlier conclusions and the
+  author's judgment, so a lane that loads them is not independent of the claim
+  it checks. `claude-cli-runner` starts every lane with `--safe-mode` and
+  `CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1`, and the login is kept. Measured
+  with marker files to stay out: the user-level instruction file,
+  `CLAUDE.md`/`AGENTS.md` of the working directory and its parents (home
+  included), a subdirectory `CLAUDE.md` after a read, and auto memory; the
+  stream's init event also shows the skills and agents of user-installed
+  plugins and of the user's skill directory gone (built-in ones remain).
+  Excluded according to the CLI documentation, not measured:
+  `CLAUDE.local.md` and user-level rules files, managed-policy `CLAUDE.md`,
+  user and project hooks, custom commands, output styles and MCP servers, and
+  the git status snapshot; managed-policy settings and policy-configured hooks
+  still apply, per the CLI. Each invocation writes `context_sources.json` into
+  its attempt directory with these three lists and the admitted sources. Under
+  `--live-capture` each attempt also writes `attempt_N.context_observed.json`
+  from the stream's init event; a hermetic lane whose init event reports an
+  auto-memory location, or that succeeds without an init event, exits `78`
+  without retry and its answer moves to `OUT.not-hermetic`. review-swarm
+  classifies that exit as `not_hermetic` (a configuration failure, not an
+  outage). `--load-operator-context` restores the CLI's default loading and the
+  records then state `hermetic: false`; independent review and derivation
+  lanes must not pass it. The CLI's environment block, its agent identity line
+  and the account e-mail address of the login still reach the lane. An
+  `unknown option` error is a deterministic, unretried failure in the claude,
+  codex, gemini, kimi and opencode runners, so a CLI that does not know
+  `--safe-mode` is expected to fail instead of running with the operator's
+  context (not tested against an older CLI). Only Claude CLI lanes are
+  covered: the codex, gemini, opencode and kimi runners and the Native
+  executor neither exclude nor record operator context, although
+  review-swarm's guidance now requires its absence for input independence. A
+  `not_hermetic` lane still triggers fallback, and a lane recovered on another
+  backend carries no hermetic record.
+- **research-team: the project-local Claude runner copy keeps operator
+  context out.** `assets/run_claude.sh`, copied into projects as
+  `scripts/run_claude.sh`, runs `claude --print --safe-mode` with
+  `CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1`, carries the marker line
+  `research-team-claude-runner: context-excluded`, and now carries the shared
+  runner's deterministic-failure classifier, so usage, missing-command,
+  authorization, quota and `unknown option` errors fail at once instead of
+  being retried; it applies the exclusion but writes no
+  `context_sources.json`.
+  `run_team_cycle.sh` uses a project copy only when it carries the marker and
+  `--safe-mode` as an option on every `claude --print` line (the asset has two,
+  with and without `--model`, and `--model` is passed only when a member model
+  is set; a flag in a trailing comment does not count).
+  Otherwise, when a member uses
+  the Claude runner through the project copy (no `--member-*-runner`
+  override), the run substitutes the shared `claude-cli-runner` with a
+  `[warn]` line and leaves the project file untouched; it refuses with the
+  refresh command instead when such a member has a `--member-*-api-base-url`
+  or `--member-*-api-key-env` option (only the project copy accepts them) or
+  when the shared runner is not available. **Migration**, once per existing
+  project: `cp <skills>/research-team/assets/run_claude.sh
+  scripts/run_claude.sh`; for a customized copy, put `--safe-mode` on every
+  `claude --print` line, export `CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1`, and
+  add the comment line `research-team-claude-runner: context-excluded`
+  (without the marker the copy is still replaced).
+- **derivation-verify: lane request wording; provider refusals recorded.** Both
+  executors ask lanes for "the full written derivation, as it would appear in a
+  paper appendix: every mathematical step stated explicitly" instead of
+  "COMPLETE original steps ... no sentence limit or truncation", which a
+  provider safeguard stopped in 9 of 10 live Claude CLI calls (0 of 4 calls
+  with reworded requests, a small sample); the lock rejects the old wording.
+  In the CLI executor with live capture, a lane or comparator stopped by the
+  provider is recorded as a refusal (`provider_refusals`, judge status
+  `provider_refusal`), contributes no derivation or family, and does not mark
+  its backend down; without live capture such a stop is an ordinary failure,
+  and the Native executor records it only as unavailable. A tie-break may
+  pick a refused family again.
+- **derivation-verify: the comparator packet carries each lane's text twice and
+  captured records at content level.** Each lane record carries its original
+  text once as the structured `derivation` and once as `transport.raw_output`,
+  or, when the output holds assistant text outside the selected JSON object, as
+  `derivation_context` with the transport marking `raw_output_given_as`. The
+  extra copies the packet carried during this release's development
+  (`original_assistant_output`, `assessment_source`) are gone; input and
+  execution spans are checked against the packet's own texts (the complete
+  context, the `derivation_summary`, the transport record as the packet
+  encodes it, or its decoded string values), and the Python packet is encoded
+  with sorted keys. With live capture, `transport.captured_records` are carried
+  per record: `by_reference` (path, SHA-256, size) only when assembly proves the
+  bytes equal a shipped field, or, for the terminal result sidecar, the
+  stream's own terminal event written with indent 2; a live stream as
+  `content_blocks`, where the lane's own assistant, streamed or result text
+  equal to a whole shipped field is replaced by a reference to it (user and
+  synthetic messages stay verbatim), with only
+  bookkeeping omitted (ids, timestamps, usage, cost and timing counters,
+  status/thinking-token/rate-limit events, stream markers, empty thinking
+  blocks, signatures); anything else inline verbatim. `artifact_refs` gain
+  `size`. Measured at release on the capture-free 300-step test derivation,
+  the two-lane comparator prompt is 67,538 bytes and three lanes 99,228;
+  during this release's development the same construction had reached
+  190,697 bytes for two lanes. On two real Claude streams with capture, the
+  request bound (system prompt, prompt and an 8,192-byte reserve) is 95,823
+  bytes for two lanes and 136,321 for three (one stream used twice) at
+  release, against 900,126 bytes
+  for two lanes before captured records were carried at content level; the
+  default byte budget is 159,040. Material that still exceeds
+  the byte budget is handled as the read-coverage entry below describes.
+- **derivation-verify: what counts as a quote of a lane's steps.**
+  Construction, applicability, diagnostic and method-risk spans count only in
+  the text outside every answer-shaped JSON object (the selected object and any
+  other decodable object with a `canonical_answer` or `derivation_summary`
+  key) or in the structured derivation as read (decoded from its JSON
+  quoting); fields such as `derivation_summary` are never quotable steps, and a
+  quote may not join text from the two sides of such an object. Line endings
+  (CRLF, CR, LF) compare as equal in both executors and in research-team's
+  construction-quote checks; any other character difference still refuses.
+- **derivation-verify: read coverage, not length, decides whether long lane
+  material counts.** Material within the conservative byte budget travels
+  inline as before. Above it, the complete material still travels inline and
+  counts only when the comparator's own runtime capture shows token usage
+  within the window and no compaction; a judge that cannot observe usage (a
+  non-Claude comparator, an injected host callable, or live capture off) is
+  refused such a request before dispatch. When every lane fits, or every judge observes usage, one request
+  holds all lanes as before; otherwise, and whenever no judge's single request
+  gives a counted verdict, each lane is assessed in its own request (counted
+  only with span-backed `answer_support`), a joint request clusters the
+  canonical answers, and an explicit method risk gets one request per lane
+  pair; `request_capacity.comparison_form` records `single_request` or
+  `per_lane`. The per-lane form gives up a comparison: no request reads two
+  lanes' bodies except the pair requests of an explicit method risk, so a lane
+  copied from another is not seen there (a live run with two accidentally
+  byte-identical lanes was caught by the single request, which reads both
+  bodies), and each judge makes 1 + n (+ pairs) requests instead of one. Only material beyond four bytes per token of the window is frozen
+  into read-only part files that a Claude CLI comparator reads with
+  Read/Glob/Grep; its verdict counts only when the capture shows every byte of
+  every part returned exactly, otherwise it is unavailable as content not
+  completely read, never truncated. The Native executor and injected host
+  callables observe neither token usage nor file reads, so there all material
+  above the byte budget stays unavailable. Live limitation: the frozen-file
+  reading path is stopped by the provider's `reasoning_extraction` safeguard
+  in most live attempts (with the reworded reading requests 2 of 4 sessions
+  ran without a stop; the shipped prompts differ from those by two wording
+  fixes and one span sentence;
+  one Read per turn, a different model or disabled thinking did not remove
+  the stop), so such material is usually recorded as
+  `provider_refusal` and does not count. The inline forms above the byte
+  budget were run live with stand-in lanes, in requests of 294,341 bytes
+  (single form) and 175,438 and 255,382 bytes (two per-lane requests): both
+  runs converged, with no provider stop and no compaction. Every source span must be one
+  contiguous exact copy; joined passages and ellipses refuse. review-swarm's
+  authority-key creation and reads serialize on a lock file.
+- **Delegation time boxes are sized from measurement** (research-team /
+  research-harness). Delegated tasks were repeatedly killed by time boxes set
+  too short. The delegation budget contract's `time_box` now carries `basis`:
+  `measured` (`unit_seconds` from a single-unit dry run times `units`; `seconds`
+  must be at least that, `TIME_BOX_BELOW_MEASURED_NEED` otherwise; required
+  when the contract declares a full-scale launch) or `declared` with a
+  one-line note and an explicit `launches_full_scale_computation: false`; the
+  two forms do not mix. A time-box re-budget (`retry_of` with
+  `exhausted_budget: time_box_seconds`) names its kind (`advancing_extension`
+  or `rebudget_after_wrap_up`) and records progress; an advancing extension
+  must cover both the whole-run projection and the latest-interval rate, and
+  its two observations are adjacent lines of a named probe log, newer than the
+  previous extension's (the gate does not open the log; a reviewer checks the
+  rows). There is no fixed extension count; a stalled run is wrapped up.
+  review-swarm's guidance is to size an explicit hard cap from the recorded
+  `elapsed_secs` of comparable seats, and derivation-verify's
+  `run_multi_backend.py` has no hard deadline by default (was 900 s).
+  **Migration:** an active delegation contract needs a `time_box.basis`, and a
+  time-box `retry_of` amendment a `kind` and `progress`, before its next
+  preflight.
+- **Six long SKILL.md files moved reference text to `references/`.**
+  numerical-reliability-gate, research-harness, idea-posterior, research-team,
+  review-swarm and research-integrity move reference-grade sections verbatim
+  to `references/*.md` behind one-line pointers; Closeout (research-harness),
+  the convergence check (review-swarm) and the Output section
+  (numerical-reliability-gate) move earlier in their files. No rule, gate or
+  wording changes; the locks that pinned moved text read the reference files.
+  The skills-market manifests of idea-posterior, research-harness,
+  research-integrity and review-swarm now include `references/`; a copy
+  install must be reinstalled to receive the new files.
+- **Cross-family review is preferred, not required.** Many users have one
+  model family on their machine. review-swarm (skill text, README, packet
+  skeleton, `review_one.py` banner) and deep-literature-review no longer say
+  that result-bearing, public-surface or irreversible artifacts require a
+  cross-family seat. They ask for a second seat from another model family when
+  one is usable (the launcher's preflight says which; a seat's family is what
+  its captured identity shows); otherwise a same-family second seat, recorded
+  as `single_family` (a degraded round, never relabeled), taking the
+  candidate-withheld route where the claim admits one (`--role
+  source-extraction`, derivation-verify, an independent reproduction), else a
+  fresh reader without the first seat's report, its input axis recorded as
+  candidate-visible. The source-fidelity literal comparison stays mandatory;
+  its reviewer is cross-family when available, otherwise a labeled
+  single-family gate.
+- **`CLAUDE.md` imports `AGENTS.md`.** The repository's `CLAUDE.md` no longer
+  mirrors the governance sections of `AGENTS.md`; it is a short header and one
+  `@AGENTS.md` import line, and rules are edited in `AGENTS.md` only.
+  `check-governance-sync.mjs` now checks that shape: a regular file (not a
+  symlink) whose only import, outside code fences and code spans, is
+  `@AGENTS.md` alone on its line, carrying none of `AGENTS.md`'s section
+  headings, and short.
+- **CI runs the complete skill test suites.** `python-contracts-test` runs the
+  full research-team, research-harness, derivation-verify (with sympy) and
+  review-swarm pytest suites, and derivation-verify's native workflow transport
+  node test; the research-team and research-harness per-file steps those
+  suites already cover are folded into them (three review-swarm per-file
+  steps remain),
+  and the launch-authorization and literature-coverage locks accept the suite
+  invocations as their wiring. Fifteen tests that had gone stale after
+  deliberate code changes (13 research-team request-capacity, one
+  derivation-verify transport, one review-swarm Gemini credential test) are
+  brought onto the current contract without loosening an assertion, and the
+  research-team old-capture decoy now sits where the capacity check reads it,
+  so that test can fail.
+- **figure-hygiene: a display that prints no value can pass the display gate.**
+  The final display semantics gate as first written for this release
+  demanded a non-empty `final_display` cell inventory, a printed
+  decimal token per cell and at least one cell per selected quantity, so a
+  curve, spectrum, field or contour drawn as continuous marks had no honest way
+  through `check_display_acceptance.py`. `final_display` now accepts
+  `prints_values: false`, closed to the reader purpose and the reviewed,
+  byte-pinned final surfaces (which carry no `format`); verdict bindings, the
+  overview figure and the main-surface rule are unchanged, and every surface
+  under that declaration is scanned whatever its name (UTF-16 through its
+  byte-order mark, anything else as ASCII-compatible text) and refused if it
+  carries a table marked `data-results` (`printed-values-undeclared`); that is
+  the only mechanical check, so values printed as plain text, in an unmarked
+  table, in SVG text or in a PDF or PNG rendering are not detected. An empty
+  `cells` list is still refused. In the full form a selected quantity drawn as marks beside printed
+  cells (a curve with a printed headline value) is listed in the new optional
+  `drawn_quantities` and may omit `raw`/`components` in the inventory; a
+  selected quantity that prints no cell and is not listed there is still
+  refused, as is a listed one that prints a cell, and a quantity that prints
+  any cell must still print all its components. A parser assertion on odd
+  markup is now a `semantics-unreadable` finding instead of a crash without a
+  payload. The coverage lock pins the declaration, the guard and their controls.
+- **Development contract aligned with the code for LOG-03, REL-01, SYNC-02,
+  PLUG-01 and LANG-01.** Five rules of `meta/ECOSYSTEM_DEV_CONTRACT.md`
+  never matched any implementation; each now states what the code does and
+  names the check that enforces it. `make release` runs the full release
+  gate (build, `codegen-check`, both version checks, catalog regeneration
+  with `git diff --exit-code`, skill tool-name lock); it is a local pre-tag
+  gate that CI does not run, and it regenerates the catalogs in place.
+- **hep-mcp: `tool_catalog.{standard,full}.json` are deterministic.** The
+  `generated_at` and `commit` fields are gone; the files hold `mode`, `count`
+  and the sorted `tools` only, are generated with `HEP_ENABLE_ZOTERO=1`, and
+  `tests/contracts/toolCatalog.test.ts` holds them byte-identical to the
+  runtime registry.
+- **orchestrator: ledger `event_type` must be a lowercase identifier**
+  (`^[a-z][a-z0-9_]*$`); `appendLedger()` and `saveStateWithLedger()` throw
+  before touching any file otherwise. The vocabulary stays open. The ledger
+  read model now maps `planning_started`, `execution_completed` and
+  `execution_failed`, so a computation run's ledger-derived status no longer
+  stays `running` after it finished.
 
 ### Fixed
 - **A case-folded name stands in for a recorded file only when it is that file.**
@@ -480,8 +908,8 @@ and delegation contracts, and consolidated run authority under one canonical
   current contract.
 - **Trace verbs** normalize path-shaped run ids, refuse ids neither disk nor ledger
   knows (nearest real ids named), and print the post-write validity, so a misaddressed
-  `void` can no longer strand a run silently; control-plane paths under `.nullius/` and
-  the project's own `backups/` no longer demote stamp honesty.
+  `void` can no longer strand a run silently; control-plane paths under `.nullius/` (its
+  `backups/` included) no longer demote stamp honesty.
 - **Atomic writes** across parents satisfy the durability contract (quarantine moves).
 - **project-mcp** enforces harness invocation before dispatch and stops the whole
   process group on timeout.
@@ -519,6 +947,97 @@ and delegation contracts, and consolidated run authority under one canonical
 - **Cross-suite pytest collection defect**: allocation tests no longer import
   `conftest` as a module (first-loaded conftest shadowed the rest when several
   skills' suites ran in one pytest invocation).
+- **Skill specification fixes.** The derivation-verify and
+  numerical-reliability-gate descriptions are trimmed below the
+  1,024-character cap; a trailing newline escape is removed from the
+  descriptions of derivation-verify, hep-calc, pdg-lookup, zotero-import and
+  research-team; citation-triangulation, figure-hygiene, julia-perf and
+  literature-graph-builder define `SKILL_DIR` before their first pasted
+  command; paper-reviser (English and Chinese) states that `--writer-model`
+  and `--auditor-model` are required with `--run-models` outside `--dry-run`
+  and that claude-cli-runner and gemini-cli-runner must be installed; hep-calc
+  lists PyYAML as a prerequisite and `check_env.sh` hints when it is missing,
+  without changing its ok decision or JSON output.
+- **MCP servers start through symlinks.** The arxiv, hep, hepdata, openalex,
+  pdg, zotero and idea MCP entry points compared `process.argv[1]` with the
+  module URL without resolving symlinks, so a start through an npm bin link, a
+  symlinked checkout or macOS `/tmp` exited 0 after about 300 ms with nothing
+  on stderr and no server (reproduced on hep-mcp). They now use `isMainModule()` from
+  `@nullius/shared`, which resolves both sides through `realpath`. Launch tests
+  through symlinks cover arxiv-mcp and hep-mcp; the other five use the same
+  helper, covered by its unit tests.
+- **Locks started through a symlinked path.**
+  `check-portable-paths-anti-drift.mjs` and `check-unreachable-modules.mjs`
+  exited 0 without checking when started through a symlinked path; both now
+  resolve both sides of their start check through `realpath`.
+- **Optional budget fields are published as optional.** Ten tools
+  (`hepdata_search`, `openalex_search`, `openalex_filter`,
+  `openalex_citations`, `inspire_topic_analysis`, `inspire_network_analysis`,
+  `inspire_trace_original_source`, `inspire_find_crossover_topics`,
+  `inspire_cleanup_downloads`, `inspire_validate_bibliography`) listed
+  omissible limits, nested options included, as `required`; what parses is
+  unchanged. The schema converter targets JSON Schema draft 2020-12 and emits
+  no `$schema` keyword; MCP reads such a schema as 2020-12, and no emitted tool
+  schema changed from the switch.
+  `findRequiredKeyMismatches` in `@nullius/shared` compares every `required`
+  list with what the parser accepts and runs over every tool in the contract
+  tests of the MCP packages, project-mcp included.
+- **Budget bounds survive `.describe()` and `.meta()`.** `openalex_search`
+  (`max_results`, `sample`), `openalex_filter` and `openalex_citations`
+  (`max_results`) published zod's generic integer range instead of their
+  declared bounds, also through hep-mcp; the bounds now sit on the inner
+  parsing pipe. `findBudgetBoundMismatches` compares each budget field's
+  published type, minimum and maximum with what it accepts, over every tool of
+  all eight MCP packages.
+- **Thinking-enabled Claude live-capture streams are read.** The
+  complete-text collector `complete_assistant_text.py` (claude-cli-runner, with
+  a copy in review-swarm; used by claude-cli-runner's `process_budget.py`,
+  review-swarm's `runtime_capture_observation.py` and research-team's
+  `request_capacity.py`) mapped a snapshot's list position to the block index,
+  but Claude Code sends one snapshot per block, so every thinking-enabled
+  Claude live-capture run was refused with "content block type changed".
+  Snapshots now align to the latest started block of their message;
+  inconsistent streams still refuse. A response stopped with
+  `stop_reason: "refusal"` never completes, so such a run now fails even when
+  the CLI exits 0. review-swarm's `verify_capture_observation` refuses a
+  missing runtime observation as `unavailable: runtime observation missing:
+  <path>` instead of a bare `FileNotFoundError`.
+- **Scaffold `AGENTS.md`: `nullius trace stamp <run_dir>`.** The project
+  scaffold's `AGENTS.md` template said `nullius trace stamp <run_id>`; the
+  command takes a run directory. A project scaffolded earlier keeps its
+  `AGENTS.md` (an existing one is never rewritten) and can correct the line by
+  hand.
+- **Public documents corrected against the code.** Statements the code
+  contradicts are corrected in the README and Chinese README, Quickstart,
+  Architecture, Project Status, the migration, agents-file, positioning and
+  run-storage guides, the orchestrator README and `orch_*` tool specification,
+  the development contract's rule statistics and several package READMEs.
+  Among them: the research-harness market entry declares skill packs in
+  `depends_on`; idea-mcp always needs `IDEA_MCP_DATA_DIR`, pointing outside
+  the development checkout; hep-mcp re-exposes provider tools under their own names
+  (`arxiv_*`, `openalex_*`, `hepdata_*`, `pdg_*`, `zotero_*`); the OpenAlex
+  contact variable is `OPENALEX_MAILTO`; `PDG_TOOL_MODE=full` adds
+  `pdg_batch`; installer examples pass `--source-root`;
+  `orch_run_execute_manifest` returns an A3 approval request first only when
+  the `compute_runs` gate is enabled or an A3 approval exists for the run;
+  fleet claims carry a lease (default 60 s) that `orch_fleet_worker_poll`
+  renews; an explicit `--agents-file` / `--roster` path that does not exist is
+  an input error; the migration's step 5 creates `AGENTS.md` only when it is
+  missing.
+- **figure-hygiene: complete sidecar example restored; 0.6.0 migration note.**
+  `references/display-semantics.md` now shows the complete provenance sidecar
+  that SKILL.md carried before (`figure`, `data`, `script`, `style`, `command`, the `series_provenance` block
+  with `table`, `series_column`, `fingerprint_column` and `check_command`, the
+  `display_acceptance` block and the top-level `sha256` map); an earlier commit
+  of this release had dropped it from SKILL.md without moving it. Migration note for the 0.6.0 final
+  display semantics gate: since 0.6.0
+  `check_display_acceptance.py` requires `display_acceptance.final_display` on
+  every manifest, so a bundle written before 0.6.0 (plotted quantities, verdict
+  bindings and an overview figure only) now returns `verdict_mismatch` with the
+  finding `semantics-malformed` (`final_display must be an object`), plus
+  `main-surface-not-covered` when the manifest has a top-level `figure`. Such a
+  bundle keeps its historical value but grants no new display acceptance until
+  `final_display` is added as the reference describes.
 
 ## [0.5.0] - 2026-07-05
 

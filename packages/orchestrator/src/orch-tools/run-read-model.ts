@@ -1,3 +1,4 @@
+import { readWorkflowAcceptance } from '../workflow-acceptance.js';
 import { listRunDirectories, readRunDirectoryInventory, readRunDirFor, resolveEvidencePath } from '../run-directories.js';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -24,6 +25,7 @@ import { TeamExecutionStateManager } from '../team-execution-storage.js';
 import { buildTeamLiveStatusView } from '../team-execution-view.js';
 import { buildTraceabilityView } from '../traceability-view.js';
 import { escapesBase } from '../computation/path-safety.js';
+import { readTaskBriefNavigation } from '../task-brief-navigation.js';
 
 export type VisibleRunStatusFilter =
   | 'idle'
@@ -70,14 +72,15 @@ const ACTIVE_DIGEST_RUN_STATUSES = new Set([
 ]);
 
 type DigestProposalKind = 'repair' | 'skill' | 'optimize' | 'innovate';
-const CURATED_WORKFLOW_OUTPUT_KEYS = ['topic_analysis', 'critical_analysis', 'network_analysis', 'connection_scan'] as const;
+const CURATED_WORKFLOW_OUTPUT_KEYS = ['topic_analysis', 'network_analysis', 'connection_scan'] as const;
 type WorkflowOutputSource = 'state' | 'legacy_workflow_projection';
+const RECOVERY_STARTUP_READ_ORDER = ['AGENTS.md', 'research_plan.md', 'project_index.md'] as const;
+const RECOVERY_CONTEXT_SELECTION = 'Start at research_plan.md#Current Status and project_index.md; select task-relevant guidance and original sources. Read applicable charter/contract constraints and complete originals whenever verification requires them. recommended_files lists candidates, not a mandatory preload.';
 const RECOVERY_RECOMMENDED_FILES = [
-  'project_index.md',
-  'AGENTS.md',
+  ...RECOVERY_STARTUP_READ_ORDER,
   'project_charter.md',
-  'research_plan.md',
   'research_contract.md',
+  'research_guidance.md',
   'research_notebook.md',
 ] as const;
 const PLAN_STEP_TERMINAL_STATUSES = new Set(['completed', 'skipped']);
@@ -225,9 +228,8 @@ function hasSubstantiveResearchNotebook(projectRoot: string): boolean {
   const notebookPath = path.join(projectRoot, 'research_notebook.md');
   if (!fs.existsSync(notebookPath)) return false;
   try {
-    // The machine-rendered current-state block is a view, not research
-    // content: a pristine scaffold carries one, so counting its lines would
-    // make every fresh notebook "substantive".
+    // Historical machine blocks contain navigation, not authored research.
+    // Current scaffolds are scientific outlines with no generated state block.
     const content = stripCurrentStateBlock(fs.readFileSync(notebookPath, 'utf-8'));
     const templateLines = currentNotebookTemplateLines();
     const lines = content
@@ -621,6 +623,7 @@ function readRecoveryContextView(
     plan_focus: planFocus,
     latest_ledger_event: ledger.latest_event,
     human_status_entry: HUMAN_STATUS_ENTRY,
+    context_selection: RECOVERY_CONTEXT_SELECTION,
     recommended_files: recommendedFiles,
     derivation_warnings: markWarningSeverity(warnings),
   };
@@ -916,19 +919,13 @@ function relativeArtifactPathForRun(projectRoot: string, runId: string, filePath
 }
 
 function readResumeContextView(projectRoot: string, state: RunState, workflowOutputKeys: string[]): Record<string, unknown> {
-  const readOrder = [
-    'AGENTS.md',
-    'project_charter.md',
-    'research_plan.md',
-    'research_contract.md',
-    'research_notebook.md',
-  ];
-  const recommendedFiles = readOrder.filter((file) => {
-    if (file !== 'research_notebook.md') return true;
-    return hasSubstantiveResearchNotebook(projectRoot);
-  });
+  // Startup navigation is deliberately small. Available source documents are
+  // candidates for the current task, not instructions to preload every file.
+  const readOrder = [...RECOVERY_STARTUP_READ_ORDER];
+  const recommendedFiles = readRecoveryRecommendedFiles(projectRoot);
   return {
     read_order: readOrder,
+    context_selection: RECOVERY_CONTEXT_SELECTION,
     status_command: 'nullius status --json',
     current_run_id: state.run_id,
     run_status: state.run_status,
@@ -1685,6 +1682,7 @@ export function buildRunStatusView(
     workflowOutputs.current_run_workflow_outputs ? Object.keys(workflowOutputs.current_run_workflow_outputs) : [],
   );
   const recoveryContext = readRecoveryContextView(projectRoot, state, ledgerSnapshot, options);
+  const taskBrief = readTaskBriefNavigation(projectRoot);
   const repairProposal = readRepairProposalView(projectRoot, state);
   const optimizeProposal = readOptimizeProposalView(projectRoot, state);
   const innovateProposal = readInnovateProposalView(projectRoot, state);
@@ -1726,13 +1724,15 @@ export function buildRunStatusView(
     gate_satisfied: state.gate_satisfied ?? {},
     artifacts: state.artifacts ?? {},
     workflow_outputs: state.workflow_outputs ?? {},
+    workflow_acceptance: readWorkflowAcceptance(projectRoot, state),
     current_run_workflow_outputs: workflowOutputs.current_run_workflow_outputs,
     current_run_workflow_outputs_error: workflowOutputs.current_run_workflow_outputs_error,
     current_run_workflow_outputs_source: workflowOutputs.current_run_workflow_outputs_source,
     legacy_workflow_projection: workflowOutputs.legacy_workflow_projection,
-    resume_context: resumeContext,
+    resume_context: { ...resumeContext, task_brief: taskBrief },
     recovery_context: {
       ...recoveryContext,
+      task_brief: taskBrief,
       current_run: recoveryContext.current_run && typeof recoveryContext.current_run === 'object'
         ? {
             ...(recoveryContext.current_run as Record<string, unknown>),

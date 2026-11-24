@@ -140,11 +140,11 @@ describe('StateManager', () => {
         current_step_id: 'export_project',
         steps: [
           {
-            step_id: 'critical_review',
-            description: 'Critical review',
+            step_id: 'citation_network',
+            description: 'Citation network',
             status: 'completed',
             expected_approvals: [],
-            expected_outputs: ['critical_analysis'],
+            expected_outputs: ['network_analysis'],
             recovery_notes: '',
           },
           {
@@ -1237,6 +1237,30 @@ describe('StateManager write operations (Stage 2)', () => {
     // Sorted keys
     const keys = Object.keys(parsed);
     expect(keys).toEqual([...keys].sort());
+  });
+
+  it('rejects an event_type that is not a lowercase identifier (LOG-03 format guard)', () => {
+    const sm = new StateManager(tmpDir);
+    const state = baseState({ run_id: 'r1', run_status: 'running' });
+    for (const bad of ['', 'Workflow_Started', 'has space', 'dash-case', '9starts_with_digit']) {
+      expect(() => sm.appendLedger(bad, { run_id: 'r1' })).toThrow(/invalid ledger event_type/);
+      expect(() => sm.saveStateWithLedger(state, bad)).toThrow(/invalid ledger event_type/);
+      expect(() => sm.saveStateWithLedger(state, 'ok_event', {
+        additional_events: [{ event_type: bad }],
+      })).toThrow(/invalid ledger event_type/);
+    }
+    // Nothing was written: the guard runs before any file is touched.
+    expect(fs.existsSync(sm.ledgerPath)).toBe(false);
+    expect(fs.existsSync(sm.statePath)).toBe(false);
+  });
+
+  it('accepts any lowercase identifier: the ledger vocabulary is open, not an enum', () => {
+    const sm = new StateManager(tmpDir);
+    sm.appendLedger('fleet_claim_reassigned', { run_id: 'r1' });
+    sm.appendLedger('status_running', { run_id: 'r1' });
+    sm.appendLedger('x', { run_id: 'r1' });
+    const lines = fs.readFileSync(sm.ledgerPath, 'utf-8').trim().split('\n').map(l => JSON.parse(l).event_type);
+    expect(lines).toEqual(['fleet_claim_reassigned', 'status_running', 'x']);
   });
 
   it('saveStateWithLedger stages .next then commits', () => {
@@ -3163,7 +3187,7 @@ describe('orch approval/query read models', () => {
         event_type: 'workflow_step_started',
         run_id: 'run-workflow-running',
         workflow_id: 'review_cycle',
-        step_id: 'critical_review',
+        step_id: 'citation_network',
         details: {},
       }),
       JSON.stringify({
@@ -3171,8 +3195,8 @@ describe('orch approval/query read models', () => {
         event_type: 'workflow_step_completed',
         run_id: 'run-workflow-running',
         workflow_id: 'review_cycle',
-        step_id: 'critical_review',
-        details: { next_step_id: 'export_project', artifact_key: 'critical_analysis' },
+        step_id: 'citation_network',
+        details: { next_step_id: 'export_project', artifact_key: 'network_analysis' },
       }),
       JSON.stringify({
         ts: '2026-04-14T00:00:02Z',

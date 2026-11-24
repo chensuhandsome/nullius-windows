@@ -119,9 +119,12 @@ export function deriveLedgerStatusFromOperatorEvent(
   previous: string,
 ): { status: string; unmappedEvent: string | null } {
   if (eventType === 'initialized') return { status: 'idle', unmappedEvent: null };
-  if (eventType === 'run_started' || eventType === 'resumed') {
+  if (eventType === 'run_started' || eventType === 'resumed' || eventType === 'planning_started') {
     return { status: 'running', unmappedEvent: null };
   }
+  // Bounded-computation terminal events (computation/runner.ts, native-control.ts).
+  if (eventType === 'execution_completed') return { status: 'completed', unmappedEvent: null };
+  if (eventType === 'execution_failed') return { status: 'failed', unmappedEvent: null };
   if (eventType === 'approval_approved') {
     return {
       status: details.category === 'A5' ? 'completed' : 'running',
@@ -142,6 +145,7 @@ export function deriveLedgerStatusFromOperatorEvent(
     return { status: 'failed', unmappedEvent: null };
   }
   if (eventType === 'workflow_plan_completed') return { status: 'completed', unmappedEvent: null };
+  if (eventType === 'workflow_acceptance_checked') return { status: previous, unmappedEvent: null };
   if (eventType === 'approval_timeout') {
     const policyAction = typeof details.policy_action === 'string' ? details.policy_action : '';
     if (policyAction === 'reject') return { status: 'rejected', unmappedEvent: null };

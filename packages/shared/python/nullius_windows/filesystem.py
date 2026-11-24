@@ -419,46 +419,56 @@ def _delete_open_file(handle):
 
 
 def read_or_create_private_key(directory, *, create):
-    """Read a 32-byte account-private, non-reparse, single-link authority key."""
+    """Publish and read a complete account-private, single-link authority key."""
     private = _private_descriptor()
     with _directory_chain(directory, create=create, security=private) as parent:
         _assert_private(parent)
-        if create:
-            try:
-                created = _child(parent, "authority.key", disposition=_CREATE, security=private,
-                    access=_READ_CONTROL | _READ_DATA | _WRITE_DATA | _READ_ATTRIBUTES | _DELETE | _SYNCHRONIZE,
-                    share=0)
-            except OSError as error:
-                if getattr(error, "winerror", None) not in (32, 80, 183):
-                    raise
-            else:
-                with created:
-                    try:
-                        _assert_private(created.value)
-                        _write_all(created.value, secrets.token_bytes(32))
-                    except BaseException:
-                        _delete_open_file(created.value)
-                        raise
-        # Exclusive creation keeps incomplete key bytes unreadable. Concurrent
-        # issuers wait only for that very short native write, never replace it.
         deadline = time.monotonic() + 2
         while True:
             try:
-                opened = _child(parent, "authority.key", share=1)
+                lock = _child(parent, "authority.lock", disposition=_OPEN_IF, security=private, share=0)
                 break
             except OSError as error:
                 if getattr(error, "winerror", None) != 32 or time.monotonic() >= deadline:
                     raise
                 time.sleep(0.01)
-        with opened:
-            if _information(opened.value).NumberOfLinks != 1:
-                raise ValueError("unavailable: unsafe host observation authority key has multiple links")
-            _assert_private(opened.value)
-            data, count = ctypes.create_string_buffer(33), wintypes.DWORD()
-            _check(_read(opened.value, data, 33, ctypes.byref(count), None))
-            if count.value != 32:
-                raise ValueError("unavailable: invalid host observation authority key")
-            return data.raw[:32]
+
+        with lock:
+            _assert_private(lock.value)
+            if _information(lock.value).NumberOfLinks != 1:
+                raise ValueError("unavailable: unsafe host observation authority lock has multiple links")
+            try:
+                opened = _child(parent, "authority.key", share=1)
+            except FileNotFoundError:
+                if not create:
+                    raise
+            else:
+                with opened:
+                    if _information(opened.value).NumberOfLinks != 1:
+                        raise ValueError("unavailable: unsafe host observation authority key has multiple links")
+                    _assert_private(opened.value)
+                    data, count = ctypes.create_string_buffer(33), wintypes.DWORD()
+                    _check(_read(opened.value, data, 33, ctypes.byref(count), None))
+                    if count.value == 32:
+                        return data.raw[:32]
+                    if not create or count.value != 0:
+                        raise ValueError("unavailable: invalid host observation authority key")
+
+            # Same-directory staging keeps the public name complete across crashes.
+            # A pre-existing empty, validated key could not have signed any record.
+            key = secrets.token_bytes(32)
+            name = f".authority.key.{os.getpid()}.{secrets.token_hex(8)}.partial"
+            with _child(parent, name, disposition=_CREATE, security=private,
+                        access=_READ_CONTROL | _WRITE_DATA | _READ_ATTRIBUTES | _DELETE | _SYNCHRONIZE,
+                        share=0) as stage:
+                try:
+                    _assert_private(stage.value)
+                    _write_all(stage.value, key)
+                    _rename_relative(stage.value, parent, "authority.key")
+                except BaseException:
+                    _delete_open_file(stage.value)
+                    raise
+            return key
 
 
 def open_read_no_reparse(path):

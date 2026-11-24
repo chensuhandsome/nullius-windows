@@ -54,6 +54,7 @@ def _write_fake_claude(bin_dir: Path) -> Path:
         """#!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${1:-}" == "--version" ]]; then echo "2.1.303"; exit 0; fi
 mode="${FAKE_MODE:-success}"
 log_file="${FAKE_LOG:-}"
 state_file="${FAKE_STATE:-}"
@@ -70,6 +71,10 @@ cat >/dev/null || true
 case "${mode}" in
   deterministic_invalid_api_key)
     echo 'API Error: 401 {"error":{"type":"authentication_error","message":"invalid api key"}}' >&2
+    exit 1
+    ;;
+  unknown_option)
+    echo "error: unknown option '--safe-mode'" >&2
     exit 1
     ;;
   connection_reset_once_then_success)
@@ -263,3 +268,30 @@ def test_classifier_is_byte_identical_across_all_five_runners() -> None:
             f"classify_deterministic_failure in {name} diverged from {reference_name}; "
             f"the five copies must stay byte-identical (edit one -> update all five).\n{diff}"
         )
+
+
+def test_unknown_option_fails_fast(tmp_path: Path) -> None:
+    # A CLI too old for a flag the runner passes (e.g. --safe-mode) must fail at once,
+    # not burn the retry backoff.
+    proc, out_path, log_path = _run_runner(tmp_path, args=[], fake_mode="unknown_option")
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert _log_text(log_path).count("args=") == 1
+    assert "matched 'unknown option'" in proc.stderr
+    assert "version 2.1.303" in proc.stderr and "--safe-mode" in proc.stderr
+    assert "update" in proc.stderr.lower()
+
+
+def test_unknown_session_json_is_not_published(tmp_path: Path) -> None:
+    session = tmp_path / "session-id"
+    proc, out, log = _run_runner(tmp_path, args=["--session-id-file", str(session)], fake_mode="success")
+    assert proc.returncode == 65
+    assert not session.exists() and not out.exists()
+    assert _log_text(log).count("args=") == 1
+    assert "version 2.1.303" in proc.stderr and "Nullius" in proc.stderr
+
+
+def test_unrecognized_live_stream_reports_version(tmp_path: Path) -> None:
+    proc, out, log = _run_runner(tmp_path, args=["--live-capture"], fake_mode="success")
+    assert proc.returncode == 65
+    assert not out.exists() and _log_text(log).count("args=") == 1
+    assert "stream-json" in proc.stderr and "version 2.1.303" in proc.stderr and "Nullius" in proc.stderr

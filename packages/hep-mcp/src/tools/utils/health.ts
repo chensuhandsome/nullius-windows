@@ -8,7 +8,8 @@ import { INSPIRE_API_URL } from '@nullius/shared';
 
 import { getDataDir, getDataRootInfo, getDownloadsDir, projectPdgDataDir } from '../../data/dataDir.js';
 import { getToolUsageSnapshot } from './toolUsageTelemetry.js';
-import { getTools, type ToolExposureMode } from '../registry.js';
+import { type ToolExposureMode } from '../registry.js';
+import { buildToolCatalog } from './toolCatalog.js';
 
 export interface HepHealthParams {
   check_inspire: boolean;
@@ -54,9 +55,17 @@ export interface HepHealthResult {
 
 function isWritableDir(dirPath: string): boolean {
   try {
-    fs.accessSync(dirPath, fs.constants.W_OK);
-    const stat = fs.statSync(dirPath);
-    return stat.isDirectory();
+    // Writers create missing directories on demand. Probe the nearest existing
+    // directory without creating anything or walking past a dangling link.
+    let existing = dirPath;
+    while (!fs.lstatSync(existing, { throwIfNoEntry: false })) {
+      const parent = path.dirname(existing);
+      if (parent === existing) return false;
+      existing = parent;
+    }
+    if (!fs.statSync(existing).isDirectory()) return false;
+    fs.accessSync(existing, fs.constants.W_OK | fs.constants.X_OK);
+    return true;
   } catch {
     return false;
   }
@@ -151,8 +160,7 @@ async function checkInspire(params: { timeoutMs: number }): Promise<{ ok: boolea
  * Stable across restarts as long as the tool registry is unchanged.
  */
 export function computeToolCatalogHash(mode: ToolExposureMode = 'standard'): string {
-  const names = getTools(mode).map(t => t.name).sort();
-  return createHash('sha256').update(names.join('\n')).digest('hex');
+  return createHash('sha256').update(buildToolCatalog(mode).tools.join('\n')).digest('hex');
 }
 
 export async function getHepHealth(params: HepHealthParams): Promise<HepHealthResult> {

@@ -32,11 +32,12 @@ if os.name == "nt":
     from nullius_windows.process import WindowsJobProcess
     _PROCESS_TYPES = (subprocess.Popen, WindowsJobProcess)
 else:
+    import fcntl
     import pwd
     _PROCESS_TYPES = (subprocess.Popen,)
 
 _LIVE: dict[int, tuple[object, subprocess.Popen]] = {}
-from complete_assistant_text import validate_stream_report
+from complete_assistant_text import capture_profile, kimi_capture_files, validate_stream_report
 
 _DOMAIN = b"nullius-runtime-capture-observation\x00"
 _MEMBER_DOMAIN = b"nullius-runtime-member-episode\x00"
@@ -228,20 +229,36 @@ def _key(*, create: bool) -> bytes:
     if not stat.S_ISDIR(ds.st_mode) or ds.st_uid != os.getuid() or ds.st_mode & 0o077:
         raise ValueError("unavailable: unsafe host observation authority directory")
     path = directory / "authority.key"
-    if create:
-        try:
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-        except FileExistsError:
-            pass
-        else:
-            with os.fdopen(fd, "wb") as stream:
-                stream.write(secrets.token_bytes(32)); stream.flush(); os.fsync(stream.fileno())
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
-    with os.fdopen(fd, "rb") as stream:
-        fs = os.fstat(stream.fileno())
-        if not stat.S_ISREG(fs.st_mode) or fs.st_uid != os.getuid() or fs.st_mode & 0o077 or fs.st_nlink != 1:
-            raise ValueError("unavailable: unsafe host observation authority key")
-        key = stream.read()
+    # Creation and reads serialize on a lock file beside the key, so a concurrent first use never
+    # reads a key that another creator has opened but not yet completely written.
+    lock_fd = os.open(directory / "authority.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX if create else fcntl.LOCK_SH)
+        if create:
+            # Under the exclusive lock: a key left empty by a creator that died before writing never signed
+            # anything and is replaced; a new key is written to a temporary name and renamed into place
+            # complete, so the key name never holds a partial key, even after a crash.
+            try:
+                empty = path.lstat().st_size == 0 and stat.S_ISREG(path.lstat().st_mode)
+            except FileNotFoundError:
+                empty = None
+            if empty is None or empty:
+                temp = directory / f"authority.key.{os.getpid()}.{secrets.token_hex(8)}.tmp"
+                fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                try:
+                    with os.fdopen(fd, "wb") as stream:
+                        stream.write(secrets.token_bytes(32)); stream.flush(); os.fsync(stream.fileno())
+                    os.replace(temp, path)
+                finally:
+                    temp.unlink(missing_ok=True)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd, "rb") as stream:
+            fs = os.fstat(stream.fileno())
+            if not stat.S_ISREG(fs.st_mode) or fs.st_uid != os.getuid() or fs.st_mode & 0o077 or fs.st_nlink != 1:
+                raise ValueError("unavailable: unsafe host observation authority key")
+            key = stream.read()
+    finally:
+        os.close(lock_fd)
     if len(key) != 32:
         raise ValueError("unavailable: invalid host observation authority key")
     return key
@@ -267,7 +284,7 @@ def _validate_context_tokens(value: int | None) -> None:
         raise ValueError("unavailable: capacity policy context_tokens must be a positive safe integer")
 
 
-def _prepare(cmd: list[str], *, context_tokens: int | None = None) -> dict | None:
+def _prepare(cmd: list[str], *, context_tokens: int | None = None, backend: str | None = None) -> dict | None:
     """Before Popen, freeze request bytes, caller policy and prior captures."""
     _validate_context_tokens(context_tokens)
     try:
@@ -278,7 +295,7 @@ def _prepare(cmd: list[str], *, context_tokens: int | None = None) -> dict | Non
         # failed-attempt output may still receive the existing empty retry.
         if output.is_file() and output.read_bytes().strip():
             return None
-        return {"nonce": object(), "cmd": list(cmd), "inputs": inputs,
+        return {"nonce": object(), "cmd": list(cmd), "inputs": inputs, "backend": backend,
                 "capacity_policy": {"context_tokens": context_tokens} if context_tokens is not None else None,
                 "input_paths": [system, prompt], "output": output,
                 "working_directory": str(Path.cwd().resolve()),
@@ -294,6 +311,8 @@ def _bind(state: dict | None, proc: subprocess.Popen) -> None:
 
 
 def _capture_files(root: Path) -> dict:
+    if capture_profile(root) == "kimi_prompt_stream_json":
+        return {p.name: _identity(p) for p in kimi_capture_files(root)}
     files = sorted({*root.glob("*.events.jsonl"), *root.glob("*.events.result.json")})
     if not files or not any(p.name.endswith(".events.jsonl") for p in files) or not any(p.name.endswith(".events.result.json") for p in files):
         raise ValueError("unavailable: incomplete original captured events/result")
@@ -340,6 +359,9 @@ def _finish(state: dict | None, proc: subprocess.Popen) -> dict | None:
         if "runtime_observation" in budget:
             raise ValueError("unavailable: capture already contains an authored observation")
         _successful_budget(budget, hashes)
+        expected_profile = {"claude": "claude_stream_json", "kimi": "kimi_prompt_stream_json"}.get(state["backend"])
+        if capture_profile(root) != expected_profile:
+            raise ValueError("unavailable: capture format does not match the invoked runner backend")
         files = _capture_files(root)
         complete_output = validate_stream_report(root, report)
         capture = {"budget_relative": str(receipt.relative_to(state["output"].parent)),
@@ -350,7 +372,7 @@ def _finish(state: dict | None, proc: subprocess.Popen) -> dict | None:
                "process_exit_code": proc.returncode, "request": state["inputs"],
                "capacity_policy": state["capacity_policy"],
                "working_directory": state["working_directory"],
-               "runner": state["runner"], "command_sha256": hashlib.sha256(_canonical(state["cmd"])).hexdigest(),
+               "backend": state["backend"], "runner": state["runner"], "command_sha256": hashlib.sha256(_canonical(state["cmd"])).hexdigest(),
                "capture": capture, "report_path": str(state["output"].resolve()), "report": _identity(state["output"])}
     signature = hmac.new(_key(create=True), _DOMAIN + _canonical(payload), hashlib.sha256).hexdigest()
     observation = {"payload": payload, "hmac_sha256": signature}
@@ -372,11 +394,15 @@ def _discard(state: dict | None) -> None:
         _LIVE.pop(id(state), None)
 
 
-def verify_capture_observation(budget_path: Path | None, report_path: Path, input_sha256: list[str], expected_working_directory: str | None = None, expected_context_tokens: int | None = None) -> dict:
+def verify_capture_observation(budget_path: Path | None, report_path: Path, input_sha256: list[str], expected_working_directory: str | None = None, expected_context_tokens: int | None = None, expected_backend: str | None = None) -> dict:
     _validate_context_tokens(expected_context_tokens)
     if not isinstance(input_sha256, list) or len(input_sha256) != 2 or any(not isinstance(h, str) or len(h) != 64 or any(c not in "0123456789abcdef" for c in h) for h in input_sha256):
         raise ValueError("unavailable: invalid complete original request hashes")
-    observation = json.loads(Path(str(report_path) + ".runtime-observation.json").read_text(encoding="utf-8"))
+    sidecar = Path(str(report_path) + ".runtime-observation.json")
+    try:
+        observation = json.loads(sidecar.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise ValueError(f"unavailable: runtime observation missing: {sidecar}") from None
     if not isinstance(observation, dict) or not isinstance(observation.get("payload"), dict) or not isinstance(observation.get("hmac_sha256"), str):
         raise ValueError("unavailable: absent runtime capture observation")
     payload = observation["payload"]
@@ -385,6 +411,8 @@ def verify_capture_observation(budget_path: Path | None, report_path: Path, inpu
         raise ValueError("unavailable: forged runtime capture observation")
     if payload.get("kind") != "runtime_capture_observation" or type(payload.get("process_exit_code")) is not int or payload["process_exit_code"] != 0:
         raise ValueError("unavailable: unsuccessful runtime capture observation")
+    if expected_backend is not None and payload.get("backend") != expected_backend:
+        raise ValueError("unavailable: runtime observation runner backend mismatch")
     policy = payload.get("capacity_policy")
     if policy is not None:
         if not isinstance(policy, dict) or set(policy) != {"context_tokens"}:
@@ -423,4 +451,4 @@ def verify_capture_observation(budget_path: Path | None, report_path: Path, inpu
         if "complete_output" in capture:
             if validate_stream_report(budget_path.parent, report_path.read_bytes().decode("utf-8")) != capture["complete_output"]:
                 raise ValueError("unavailable: original complete-output binding mismatch")
-    return {"valid": True, "capacity_policy": policy, "observation_id": payload["observation_id"], "request": payload["request"], "report": payload["report"], "working_directory": payload["working_directory"], "complete_output": capture.get("complete_output") if capture else None}
+    return {"valid": True, "backend": payload.get("backend"), "capacity_policy": policy, "observation_id": payload["observation_id"], "request": payload["request"], "report": payload["report"], "working_directory": payload["working_directory"], "complete_output": capture.get("complete_output") if capture else None}

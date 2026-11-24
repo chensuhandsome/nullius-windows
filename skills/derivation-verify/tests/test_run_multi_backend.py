@@ -31,6 +31,35 @@ def test_family_of():
     assert mb.family_of("minimax/MiniMax-M2.5") == "opencode"
 
 
+def test_native_prompt_stdout_and_stderr_reach_comparator_without_omission(tmp_path):
+    raw = "Earlier original explanation.\r\n" + json.dumps({"canonical_answer": "present",
+        "derivation": "Original complete neutral steps.", "derivation_summary": "navigation", "confidence": "high"}) + "\n"
+    output = tmp_path / "report"; output.write_bytes(raw.encode())
+    root = Path(str(output) + ".attempts") / "run.fresh"; root.mkdir(parents=True)
+    originals = {
+        "attempt_1.stdout": "\n".join(map(json.dumps, [
+            {"role": "meta", "type": "system.version", "version": "2.6.0"},
+            {"role": "assistant", "content": raw},
+            {"role": "meta", "type": "session.resume_hint", "session_id": "neutral-session",
+             "command": "continue neutral-session", "content": "Resume the session."}])) + "\n",
+        "attempt_1.stderr": "Original diagnostic bytes\r\n"}
+    for name, text in originals.items():
+        (root / name).write_bytes(text.encode())
+    def run(*args):
+        run.invocations[args[-1]] = {"exit_code": 0, "output": str(output)}
+        return raw
+    run.invocations = {}
+    lane = mb._execute_derivation(run, "kimi/default", "neutral system", "neutral raw request", "native-prompt")
+    assert lane["original_assistant_output"] == raw
+    assert lane["transport"]["raw_output"] == raw
+    packet = mb._lane_entry(lane, "kimi", 0)
+    assert packet["derivation_context"] == raw
+    for name, text in originals.items():
+        path = str(root / name)
+        assert lane["transport"]["captured_records"][path] == text
+        assert packet["transport"]["captured_records"][path] == {"carried": "inline", "content": text}
+
+
 # ---------------------------------------------------------------- extract_json
 def test_extract_json_fenced():
     assert mb.extract_json('```json\n{"a": 1}\n```') == {"a": 1}
@@ -725,8 +754,9 @@ def test_run_gate_summary_schema_and_skips():
     assert set(out) == {"total_claims", "converged", "unconverged", "clean_first_pass",
                         "needed_iteration", "dropped_claims", "family_pool",
                         "agents_file", "independence",
-                        "unavailable_backends", "matrix"}
+                        "unavailable_backends", "provider_refusals", "matrix"}
     assert out["unavailable_backends"] == []  # healthy run: nothing was dropped
+    assert out["provider_refusals"] == []
     assert out["total_claims"] == 1   # 2 malformed claims skipped
     assert out["dropped_claims"] == 2
     assert out["converged"] == 1

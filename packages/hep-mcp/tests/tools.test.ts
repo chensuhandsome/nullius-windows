@@ -7,7 +7,6 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { TopicEvolutionSchema } from '@nullius/shared';
 
 // Mock the API client
 vi.mock('../src/api/client.js', () => ({
@@ -31,26 +30,6 @@ vi.mock('../src/tools/research/topicAnalysis.js', () => ({
 
 vi.mock('../src/tools/research/networkAnalysis.js', () => ({
   analyzeNetwork: vi.fn(),
-}));
-
-vi.mock('../src/tools/research/evidenceGrading.js', () => ({
-  gradeEvidence: vi.fn(),
-}));
-
-vi.mock('../src/tools/research/conflictDetector.js', () => ({
-  detectConflicts: vi.fn(),
-}));
-
-vi.mock('../src/tools/research/criticalAnalysis.js', () => ({
-  performCriticalAnalysis: vi.fn(),
-}));
-
-vi.mock('../src/tools/research/reviewClassifier.js', () => ({
-  classifyReviews: vi.fn(),
-}));
-
-vi.mock('../src/tools/research/theoreticalConflicts.js', () => ({
-  performTheoreticalConflicts: vi.fn(),
 }));
 
 vi.mock('../src/utils/resolveArxivId.js', () => ({
@@ -78,14 +57,6 @@ vi.mock('../src/tools/research/traceSource.js', () => ({
   traceOriginalSource: vi.fn(),
 }));
 
-vi.mock('../src/tools/research/crossoverTopics.js', () => ({
-  findCrossoverTopics: vi.fn(),
-}));
-
-vi.mock('../src/tools/research/stance/index.js', () => ({
-  analyzeStanceFromLatex: vi.fn(),
-}));
-
 vi.mock('../src/tools/research/cleanupDownloads.js', () => ({
   cleanupDownloads: vi.fn(),
 }));
@@ -105,17 +76,10 @@ const api = await import('../src/api/client.js');
 // Import mocked modules
 const topicAnalysis = await import('../src/tools/research/topicAnalysis.js');
 const networkAnalysis = await import('../src/tools/research/networkAnalysis.js');
-const evidenceGrading = await import('../src/tools/research/evidenceGrading.js');
-const conflictDetector = await import('../src/tools/research/conflictDetector.js');
-const criticalAnalysis = await import('../src/tools/research/criticalAnalysis.js');
-const reviewClassifier = await import('../src/tools/research/reviewClassifier.js');
-const theoreticalConflicts = await import('../src/tools/research/theoreticalConflicts.js');
 const arxivTooling = await import('@nullius/arxiv-mcp/tooling');
 const parseLatexContent = await import('../src/tools/research/parseLatexContent.js');
 const findConnections = await import('../src/tools/research/findConnections.js');
 const traceSource = await import('../src/tools/research/traceSource.js');
-const crossoverTopics = await import('../src/tools/research/crossoverTopics.js');
-const stance = await import('../src/tools/research/stance/index.js');
 const cleanupDownloads = await import('../src/tools/research/cleanupDownloads.js');
 const validateBibliography = await import('../src/tools/research/validateBibliography.js');
 const paperClassifier = await import('../src/tools/research/paperClassifier.js');
@@ -251,7 +215,7 @@ describe('Tool Handlers (current exposure)', () => {
     expect(api.searchByUrl).toHaveBeenCalledTimes(1);
   });
 
-  it('topicEvolution preserves legacy omitted granularity while consuming shared result authority', async () => {
+  it('topicEvolution preserves omitted five-year granularity with explicit provider metadata', async () => {
     vi.mocked(api.search)
       .mockResolvedValueOnce({
         total: 2,
@@ -288,13 +252,16 @@ describe('Tool Handlers (current exposure)', () => {
 
     expect(api.search).toHaveBeenNthCalledWith(
       1,
-      'QCD date:2020->2024',
+      '(QCD) and date:2020->2024',
       expect.objectContaining({ sort: 'mostcited', size: 1000 }),
     );
     expect(api.search).toHaveBeenCalledTimes(2);
     expect(result.phases).toHaveLength(1);
     expect(result.phases[0]?.period).toBe('2020-2024');
-    expect(TopicEvolutionSchema.parse(result)).toEqual(result);
+    expect(result.phases[0]?.search).toMatchObject({ status: 'available', returned_count: 2, sample_complete: true });
+    expect(result.phases[0]?.publication_count_change).toBeNull();
+    expect(result.current_status.time_range).toEqual({ start: 2023, end: 2024 });
+    expect(result.current_status).not.toHaveProperty('trend');
   });
 
   it('topicAnalysis keeps legacy omitted granularity on the live evolution path', async () => {
@@ -338,7 +305,7 @@ describe('Tool Handlers (current exposure)', () => {
 
     expect(api.search).toHaveBeenNthCalledWith(
       1,
-      'QCD date:2020->2024',
+      '(QCD) and date:2020->2024',
       expect.objectContaining({ sort: 'mostcited', size: 1000 }),
     );
     expect(result.evolution?.phases).toHaveLength(1);
@@ -568,7 +535,7 @@ describe('Tool Handlers (current exposure)', () => {
       return bibtex;
     });
 
-    const res = await handleToolCall('inspire_resolve_citekey', { recid });
+    const res = await handleToolCall('inspire_resolve_citekey', { recid: Number(recid) });
     expect(res.isError).toBeFalsy();
 
     const payload = JSON.parse(readTextBlock(res)) as {
@@ -637,7 +604,7 @@ describe('Tool Handlers (current exposure)', () => {
   it('inspire_find_connections should call findConnections', async () => {
     vi.mocked(findConnections.findConnections).mockResolvedValueOnce({ ok: true } as any);
     await handleToolCall('inspire_find_connections', {
-      recids: ['1', '2'],
+      recids: [1, '2'],
       include_external: true,
       max_external_depth: 2,
     });
@@ -651,7 +618,7 @@ describe('Tool Handlers (current exposure)', () => {
   it('inspire_trace_original_source should call traceOriginalSource', async () => {
     vi.mocked(traceSource.traceOriginalSource).mockResolvedValueOnce({ ok: true } as any);
     await handleToolCall('inspire_trace_original_source', {
-      recid: '1',
+      recid: 1,
       max_depth: 3,
       max_refs_per_level: 2,
       cross_validate: true,
@@ -664,90 +631,41 @@ describe('Tool Handlers (current exposure)', () => {
     });
   });
 
-  it('inspire_grade_evidence should call gradeEvidence', async () => {
-    vi.mocked(evidenceGrading.gradeEvidence).mockResolvedValueOnce({ ok: true } as any);
+
+  it.each((['standard', 'full'] as const).flatMap(mode => [
+    'inspire_detect_measurement_conflicts',
+    'inspire_grade_evidence',
+    'inspire_critical_analysis',
+    'inspire_classify_reviews',
+    'inspire_theoretical_conflicts',
+    'inspire_analyze_citation_stance',
+    'inspire_find_crossover_topics',
+  ].map(tool => ({ mode, tool }))))('refuses $tool in $mode without executing providers or sampling', async ({ mode, tool }) => {
     const createMessage = vi.fn();
-
-    await handleToolCall(
-      'inspire_grade_evidence',
-      { recid: '1' },
-      'standard',
-      { createMessage }
-    );
-
-    expect(evidenceGrading.gradeEvidence).toHaveBeenCalledWith(
-      { recid: '1' },
-      { createMessage }
-    );
+    const callTool = vi.fn();
+    const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('unexpected network call'));
+    try {
+      const response = await handleToolCall(
+        tool,
+        { project_root: projectRoot, recids: ['1', '2'], target_quantities: ['W mass'] },
+        mode,
+        { createMessage, callTool }
+      );
+      expect(response.isError).toBe(true);
+      expect(getTools(mode).some(definition => definition.name === tool)).toBe(false);
+      expect(readTextBlock(response)).toContain(`Unknown tool: ${tool}`);
+      expect(api.getPaper).not.toHaveBeenCalled();
+      expect(arxivTooling.accessPaperSource).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(createMessage).not.toHaveBeenCalled();
+      expect(callTool).not.toHaveBeenCalled();
+    } finally {
+      fetch.mockRestore();
+    }
   });
 
-  it('inspire_detect_measurement_conflicts should call detectConflicts', async () => {
-    vi.mocked(conflictDetector.detectConflicts).mockResolvedValueOnce({ ok: true } as any);
-    const createMessage = vi.fn();
 
-    await handleToolCall(
-      'inspire_detect_measurement_conflicts',
-      { recids: ['1', '2'] },
-      'standard',
-      { createMessage }
-    );
 
-    expect(conflictDetector.detectConflicts).toHaveBeenCalledWith(
-      { recids: ['1', '2'] },
-      { createMessage }
-    );
-  });
-
-  it('inspire_critical_analysis should call performCriticalAnalysis', async () => {
-    vi.mocked(criticalAnalysis.performCriticalAnalysis).mockResolvedValueOnce({ ok: true } as any);
-    const createMessage = vi.fn();
-
-    await handleToolCall(
-      'inspire_critical_analysis',
-      { recid: '1' },
-      'standard',
-      { createMessage }
-    );
-
-    expect(criticalAnalysis.performCriticalAnalysis).toHaveBeenCalledWith(
-      { recid: '1' },
-      { createMessage }
-    );
-  });
-
-  it('inspire_classify_reviews should call classifyReviews', async () => {
-    vi.mocked(reviewClassifier.classifyReviews).mockResolvedValueOnce({ ok: true } as any);
-    const createMessage = vi.fn();
-
-    await handleToolCall(
-      'inspire_classify_reviews',
-      { recids: ['1', '2'] },
-      'standard',
-      { createMessage }
-    );
-
-    expect(reviewClassifier.classifyReviews).toHaveBeenCalledWith(
-      { recids: ['1', '2'] },
-      { createMessage }
-    );
-  });
-
-  it('inspire_theoretical_conflicts should call performTheoreticalConflicts', async () => {
-    vi.mocked(theoreticalConflicts.performTheoreticalConflicts).mockResolvedValueOnce({ ok: true } as any);
-    const createMessage = vi.fn();
-
-    await handleToolCall(
-      'inspire_theoretical_conflicts',
-      { output_dir: 'out', recids: ['1', '2'] },
-      'standard',
-      { createMessage }
-    );
-
-    expect(theoreticalConflicts.performTheoreticalConflicts).toHaveBeenCalledWith(
-      { output_dir: 'out', recids: ['1', '2'] },
-      { createMessage }
-    );
-  });
 
   it('inspire_paper_source should call accessPaperSource', async () => {
     vi.mocked(arxivTooling.accessPaperSource).mockResolvedValueOnce({
@@ -917,17 +835,7 @@ describe('Tool Handlers (current exposure)', () => {
     expect(result.isError).toBe(true);
   });
 
-  it('inspire_find_crossover_topics should call findCrossoverTopics', async () => {
-    vi.mocked(crossoverTopics.findCrossoverTopics).mockResolvedValueOnce({ ok: true } as any);
-    await handleToolCall('inspire_find_crossover_topics', {}, 'full');
-    expect(crossoverTopics.findCrossoverTopics).toHaveBeenCalled();
-  });
 
-  it('inspire_analyze_citation_stance should call analyzeStanceFromLatex', async () => {
-    vi.mocked(stance.analyzeStanceFromLatex).mockResolvedValueOnce({ ok: true } as any);
-    await handleToolCall('inspire_analyze_citation_stance', { latex_content: 'text', target_recid: '1' }, 'full');
-    expect(stance.analyzeStanceFromLatex).toHaveBeenCalled();
-  });
 
   it('inspire_cleanup_downloads should call cleanupDownloads', async () => {
     vi.mocked(cleanupDownloads.cleanupDownloads).mockResolvedValueOnce({ ok: true } as any);

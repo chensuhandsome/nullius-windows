@@ -22,6 +22,7 @@ import {
 export const RAW_INSPIRE_SEARCH_TOOL_SPECS: Omit<ToolSpec, 'riskLevel'>[] = [
   {
     name: INSPIRE_SEARCH,
+    title: 'Search INSPIRE',
     tier: 'core',
     exposure: 'standard',
     description: `Search INSPIRE-HEP literature database (network). Supports combining multiple conditions in one query.
@@ -143,6 +144,7 @@ Example combined query: "a:Feng.Kun.Guo.1 topcite:250+ authorcount:1->10"`,
   },
   {
     name: INSPIRE_SEARCH_NEXT,
+    title: 'INSPIRE next results page',
     tier: 'core',
     exposure: 'standard',
     description:
@@ -170,9 +172,10 @@ Example combined query: "a:Feng.Kun.Guo.1 topcite:250+ authorcount:1->10"`,
   },
   {
     name: INSPIRE_LITERATURE,
+    title: 'INSPIRE literature lookup',
     tier: 'consolidated',
     exposure: 'standard',
-    description: `Unified INSPIRE literature access tool (network).
+    description: `Unified INSPIRE literature access tool (network). Use identifiers supplied by the caller or found in a source or catalog record. If only the paper's subject or bibliographic details are known, use inspire_search first. Match the title and authors or collaboration before copying an identifier from the result.
 
 Modes + required args:
 - get_paper: { recid } only. Do not pass size, page, or options.
@@ -184,7 +187,7 @@ Modes + required args:
 - get_author: { identifier } only. Do not pass size, sort, page, or options; accidental size is ignored. identifier can be INSPIRE BAI (e.g. E.Witten.1), ORCID, or a name query; returns \`bai\` for disambiguation.
 
 Examples:
-- get_paper: \`{ mode: "get_paper", recid: "854586" }\`
+- get_paper: \`{ mode: "get_paper", recid: 854586 }\`
 - lookup_by_id: \`{ mode: "lookup_by_id", identifier: "2109.01038" }\`
 - get_citations: \`{ mode: "get_citations", recid: "854586", size: 10, sort: "mostcited" }\`
 
@@ -197,7 +200,7 @@ Tip: For ambiguous names, call \`get_author\` first, then use \`inspire_search\`
         case 'get_references':
           return api.getReferences(params.recid!, params.size);
         case 'lookup_by_id': {
-          const identifier = params.identifier!;
+          const identifier = String(params.identifier!);
           if (/^\d+$/.test(identifier)) return api.getPaper(identifier);
           if (identifier.startsWith('10.')) return api.getByDoi(identifier);
           return api.getByArxiv(identifier);
@@ -217,6 +220,7 @@ Tip: For ambiguous names, call \`get_author\` first, then use \`inspire_search\`
   },
   {
     name: INSPIRE_RESOLVE_CITEKEY,
+    title: 'Resolve INSPIRE citekeys',
     tier: 'consolidated',
     exposure: 'standard',
     description:

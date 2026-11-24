@@ -26,14 +26,16 @@ import {
   PDG_GET_DECAYS,
   PDG_GET_MEASUREMENTS,
   PDG_BATCH,
+  toolAnnotationsFor,
+  type McpToolAnnotations,
 } from '@nullius/shared';
+import { PDG_TOOL_HINTS, PDG_TOOL_RISK_LEVELS } from './annotations.js';
 import { sqlite3JsonQuery, sqlStringLiteral } from '../db/sqlite3Cli.js';
 import { defaultArtifactName, writeJsonArtifact, writeJsonlArtifact } from '../artifacts.js';
 import { requireUniqueBaseParticle } from './resolveParticle.js';
 import { chooseEdition } from './editions.js';
 import { formatPdgDisplayText } from './displayText.js';
 import { normalizeParticleNameInput } from './nameNormalization.js';
-import { deriveWidthFromLifetime } from './derivedWidth.js';
 
 export type ToolExposureMode = 'standard' | 'full';
 export type ToolExposure = 'standard' | 'full';
@@ -42,6 +44,8 @@ export interface ToolHandlerContext {}
 
 export interface ToolSpec<TSchema extends z.ZodType<any, any> = z.ZodType<any, any>> {
   name: string;
+  /** Human-readable display name. */
+  title?: string;
   description: string;
   exposure: ToolExposure;
   /** Tool input schema (SSOT) */
@@ -120,8 +124,7 @@ const PdgGetPropertyToolSchema = z.object({
   particle: ParticleSelectorSchema,
   property: z.enum(['mass', 'width', 'lifetime']),
   edition: z.string().min(1).optional(),
-  allow_derived: z.boolean().optional().default(false),
-});
+}).strict();
 
 const SafePathSegmentSchema = z
   .string()
@@ -242,6 +245,7 @@ function toInspireLookupIdentifiers(ref: { doi: string | null; inspire_id: strin
 export const TOOL_SPECS: ToolSpec[] = [
   {
     name: PDG_INFO,
+    title: 'PDG server info',
     description: 'Return PDG MCP server info and local data directories (small result; local-only).',
     exposure: 'standard',
     zodSchema: PdgInfoToolSchema,
@@ -249,7 +253,7 @@ export const TOOL_SPECS: ToolSpec[] = [
       const dbPath = getPdgDbPathFromEnv();
       if (!dbPath) {
         return {
-          server: { name: 'pdg-mcp', version: '0.6.0' },
+          server: { name: 'pdg-mcp', version: '0.6.1' },
           db: {
             configured: false,
             reason: 'PDG_DB_PATH not set',
@@ -269,7 +273,7 @@ export const TOOL_SPECS: ToolSpec[] = [
       };
 
       return {
-        server: { name: 'pdg-mcp', version: '0.6.0' },
+        server: { name: 'pdg-mcp', version: '0.6.1' },
         db: {
           configured: true,
           db_path: dbPath,
@@ -291,6 +295,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   },
   {
     name: PDG_FIND_PARTICLE,
+    title: 'Find PDG particle',
     description:
       'Find particle candidates by name / MCID / PDG identifier (small result; supports pagination; local-only; requires `PDG_DB_PATH`).',
     exposure: 'standard',
@@ -389,6 +394,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   },
   {
     name: PDG_FIND_REFERENCE,
+    title: 'Find PDG reference',
     description:
       'Find PDG references by DOI / INSPIRE recid / document id / title (small result; supports pagination; local-only; requires `PDG_DB_PATH`).',
     exposure: 'standard',
@@ -429,6 +435,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   },
   {
     name: PDG_GET_REFERENCE,
+    title: 'PDG reference',
     description: 'Get a PDG reference record (small result; includes INSPIRE lookup identifiers; local-only; requires `PDG_DB_PATH`).',
     exposure: 'standard',
     zodSchema: PdgGetReferenceToolSchema,
@@ -457,8 +464,9 @@ export const TOOL_SPECS: ToolSpec[] = [
   },
   {
     name: PDG_GET_PROPERTY,
+    title: 'PDG particle property',
     description:
-      'Get a high-frequency particle property (mass/width/lifetime) with uncertainties and PDG locator (local-only; requires `PDG_DB_PATH`).',
+      'Get a stored particle-property summary (mass/width/lifetime) with uncertainties and PDG locator. Missing quantities are not derived; use pdg_get for all source rows (local-only; requires `PDG_DB_PATH`).',
     exposure: 'standard',
     zodSchema: PdgGetPropertyToolSchema,
     handler: async (params) => {
@@ -500,199 +508,21 @@ LIMIT 10;
         .filter(r => Number.isFinite(r.id) && typeof r.pdgid === 'string');
 
       if (props.length === 0) {
-        if (params.property !== 'width' || !params.allow_derived) {
-          throw notFound('Property not found for particle', { particle: basePdgid, property: params.property });
-        }
-
-        const lifetimeRows = await sqlite3JsonQuery(
-          dbPath,
-          `
-SELECT id, pdgid, description, data_type, flags, sort
-FROM pdgid
-WHERE parent_pdgid = ${sqlStringLiteral(basePdgid)}
-  AND data_type = 'T'
-ORDER BY (flags LIKE 'D%') DESC, sort ASC, id ASC
-LIMIT 10;
-`.trim()
-        );
-
-        const lifetimes = lifetimeRows
-          .map(r => (r && typeof r === 'object' ? (r as Record<string, unknown>) : null))
-          .filter(Boolean)
-          .map(r => ({
-            id: typeof r!.id === 'number' ? r!.id : Number(r!.id),
-            pdgid: String(r!.pdgid),
-            description: r!.description === null || r!.description === undefined ? null : String(r!.description),
-            data_type: r!.data_type === null || r!.data_type === undefined ? null : String(r!.data_type),
-            flags: r!.flags === null || r!.flags === undefined ? null : String(r!.flags),
-            sort: r!.sort === null || r!.sort === undefined ? null : Number(r!.sort),
-          }))
-          .filter(r => Number.isFinite(r.id) && typeof r.pdgid === 'string');
-
-        if (lifetimes.length === 0) {
-          throw notFound('Cannot derive width: lifetime not found for particle', { particle: basePdgid });
-        }
-
-        const lifetimeProp = lifetimes[0]!;
-
-        const availableEditionsRows = await sqlite3JsonQuery(
-          dbPath,
-          `
-SELECT DISTINCT edition
-FROM pdgdata
-WHERE pdgid_id = ${lifetimeProp.id}
-  AND edition IS NOT NULL
-ORDER BY edition DESC;
-`.trim()
-        );
-        const availableEditions = availableEditionsRows
-          .map(r => (r && typeof r === 'object' ? (r as Record<string, unknown>).edition : null))
-          .map(v => (typeof v === 'string' ? v : v === null || v === undefined ? null : String(v)))
-          .filter((v): v is string => typeof v === 'string' && v.length > 0);
-
-        const chosenEdition = chooseEdition({
-          preferredEdition,
-          requestedEdition: params.edition ?? undefined,
-          availableEditions,
-          what: 'lifetime (for derived width)',
-        });
-
-        const editionWhere = chosenEdition ? `AND edition = ${sqlStringLiteral(chosenEdition)}` : '';
-        const lifetimeDataRows = await sqlite3JsonQuery(
-          dbPath,
-          `
-SELECT
-  id,
-  edition,
-  value_type,
-  in_summary_table,
-  confidence_level,
-  limit_type,
-  comment,
-  value,
-  value_text,
-  error_positive,
-  error_negative,
-  scale_factor,
-  unit_text,
-  display_value_text,
-  display_power_of_ten,
-  display_in_percent
-FROM pdgdata
-WHERE pdgid_id = ${lifetimeProp.id}
-  ${editionWhere}
-ORDER BY in_summary_table DESC, COALESCE(sort, 0) ASC, id ASC;
-`.trim()
-        );
-
-        const lifetimeData = lifetimeDataRows
-          .map(r => (r && typeof r === 'object' ? (r as Record<string, unknown>) : null))
-          .filter(Boolean)
-          .map(r => ({
-            id: typeof r!.id === 'number' ? r!.id : Number(r!.id),
-            edition: r!.edition === null || r!.edition === undefined ? null : String(r!.edition),
-            value_type: r!.value_type === null || r!.value_type === undefined ? null : String(r!.value_type),
-            in_summary_table: Boolean(r!.in_summary_table),
-            confidence_level: r!.confidence_level === null || r!.confidence_level === undefined ? null : Number(r!.confidence_level),
-            limit_type: r!.limit_type === null || r!.limit_type === undefined ? null : String(r!.limit_type),
-            comment: r!.comment === null || r!.comment === undefined ? null : String(r!.comment),
-            value: r!.value === null || r!.value === undefined ? null : Number(r!.value),
-            value_text: r!.value_text === null || r!.value_text === undefined ? null : String(r!.value_text),
-            error_positive: r!.error_positive === null || r!.error_positive === undefined ? null : Number(r!.error_positive),
-            error_negative: r!.error_negative === null || r!.error_negative === undefined ? null : Number(r!.error_negative),
-            scale_factor: r!.scale_factor === null || r!.scale_factor === undefined ? null : Number(r!.scale_factor),
-            unit_text: r!.unit_text === null || r!.unit_text === undefined ? null : String(r!.unit_text),
-            display_value_text: r!.display_value_text === null || r!.display_value_text === undefined ? null : String(r!.display_value_text),
-            display_power_of_ten:
-              r!.display_power_of_ten === null || r!.display_power_of_ten === undefined ? null : Number(r!.display_power_of_ten),
-            display_in_percent: Boolean(r!.display_in_percent),
-          }))
-          .filter(r => Number.isFinite(r.id));
-
-        if (lifetimeData.length === 0) {
-          throw notFound('Cannot derive width: no lifetime pdgdata rows found', {
-            pdgid_id: lifetimeProp.id,
-            edition: chosenEdition ?? null,
-          });
-        }
-
-        const lifetimeChosen = lifetimeData[0]!;
-        if (lifetimeChosen.value === null || !Number.isFinite(lifetimeChosen.value)) {
-          throw notFound('Cannot derive width: lifetime numeric value missing', {
-            pdgid_id: lifetimeProp.id,
-            pdgdata_id: lifetimeChosen.id,
-          });
-        }
-
-        const derived = deriveWidthFromLifetime({
-          lifetime_value: lifetimeChosen.value,
-          lifetime_error_positive: lifetimeChosen.error_positive,
-          lifetime_error_negative: lifetimeChosen.error_negative,
-          lifetime_unit_text: lifetimeChosen.unit_text,
-        });
-
-        const derivedDisplayText = formatPdgDisplayText({
-          display_value_text: derived.value.display_value_text,
-          unit_text: derived.value.unit_text,
-          display_power_of_ten: derived.value.display_power_of_ten,
-          display_in_percent: derived.value.display_in_percent,
-        });
-
-        const lifetimeLocator = {
-          table: 'pdgdata',
-          pdgdata_id: lifetimeChosen.id,
-          pdgid: lifetimeProp.pdgid,
-          pdgid_id: lifetimeProp.id,
-          edition: lifetimeChosen.edition ?? chosenEdition ?? null,
-        };
-
-        return {
-          normalized: resolved.normalized ?? null,
-          particle,
-          property: {
-            key: 'width',
-            pdgid: null,
-            pdgid_id: null,
-            description: 'Derived from lifetime (mean life): Γ = ħ / τ',
-            data_type: 'G',
-            flags: null,
-            derived: {
-              kind: 'width_from_lifetime',
-              formula: 'Gamma = ħ / tau',
-              constants: derived.constants,
-              from: {
+        throw notFound('Property not found for particle', {
+          particle: basePdgid,
+          property: params.property,
+          ...(params.property === 'width' ? {
+            suggestion: 'Query the recorded lifetime explicitly if it is relevant to your calculation; this provider returns stored PDG values only.',
+            next_actions: [{
+              tool: PDG_GET_PROPERTY,
+              args: {
+                particle: { pdgid: basePdgid },
                 property: 'lifetime',
-                pdgid: lifetimeProp.pdgid,
-                pdgid_id: lifetimeProp.id,
-                pdg_locator: lifetimeLocator,
+                ...(params.edition ? { edition: params.edition } : {}),
               },
-            },
-          },
-          edition: lifetimeChosen.edition ?? chosenEdition ?? null,
-          value: {
-            display_value_text: derived.value.display_value_text,
-            display_text: derivedDisplayText,
-            unit_text: derived.value.unit_text,
-            value: derived.value.value,
-            error_positive: derived.value.error_positive,
-            error_negative: derived.value.error_negative,
-            limit_type: null,
-            limit_type_meaning: null,
-            value_type: 'DERIVED',
-            value_type_meaning: null,
-            confidence_level: null,
-            display_in_percent: derived.value.display_in_percent,
-            display_power_of_ten: derived.value.display_power_of_ten,
-          },
-          pdg_locator: {
-            table: 'derived(width_from_lifetime)',
-            derived_from: lifetimeLocator,
-          },
-          alternatives: {
-            property_pdgids: [],
-            pdgdata_rows: 0,
-          },
-        };
+            }],
+          } : {}),
+        });
       }
 
       const prop = props[0]!;
@@ -860,6 +690,7 @@ WHERE table_name='PDGDATA'
   },
   {
     name: PDG_GET,
+    title: 'PDG identifier object',
     description: 'Get a PDG identifier object (writes a JSON artifact; returns URI + summary; local-only; requires `PDG_DB_PATH`).',
     exposure: 'standard',
     zodSchema: PdgGetToolSchema,
@@ -1017,6 +848,7 @@ WHERE parent_pdgid = ${sqlStringLiteral(row.pdgid)};
   },
   {
     name: PDG_GET_DECAYS,
+    title: 'PDG decay modes',
     description: 'List decay modes for a particle (writes JSONL artifact; returns URI + summary; local-only; requires `PDG_DB_PATH`).',
     exposure: 'standard',
     zodSchema: PdgGetDecaysToolSchema,
@@ -1221,6 +1053,7 @@ ORDER BY pdgid_id ASC, sort ASC;
   },
   {
     name: PDG_GET_MEASUREMENTS,
+    title: 'PDG measurements',
     description:
       'List PDG measurements for an identifier (writes JSONL artifact; includes references/values/footnotes; local-only; requires `PDG_DB_PATH`). Can be called with pdgid, particle selector, or property_pdgid directly. ' +
       'CRITICAL: If the result has kind="series_options" or stop_here=true, you MUST STOP querying and select one series using property_pdgid or data_type from example_next_calls. ' +
@@ -1837,6 +1670,7 @@ ORDER BY mf.pdgmeasurement_id ASC, COALESCE(f.footnote_index, 0) ASC, f.id ASC;
   },
   {
     name: PDG_BATCH,
+    title: 'PDG batch calls',
     description:
       'Execute multiple PDG tool calls in one request (writes a JSON artifact; supports limited parallelism; local-only; requires `PDG_DB_PATH` for most calls).',
     exposure: 'full',
@@ -1993,12 +1827,16 @@ export function getToolSpecs(mode: ToolExposureMode = 'standard'): ToolSpec[] {
 
 export function getTools(mode: ToolExposureMode = 'standard'): Array<{
   name: string;
+  title?: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  annotations: McpToolAnnotations;
 }> {
   return getToolSpecs(mode).map(s => ({
     name: s.name,
+    title: s.title,
     description: s.description,
     inputSchema: zodToMcpInputSchema(s.zodSchema),
+    annotations: toolAnnotationsFor(s.name, PDG_TOOL_RISK_LEVELS, PDG_TOOL_HINTS),
   }));
 }

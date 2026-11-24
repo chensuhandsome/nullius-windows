@@ -18,10 +18,16 @@ if os.name == "nt":
 def test_atomic_replacement_preserves_security_and_exact_text(tmp_path):
     target = tmp_path / "contract.txt"
     target.write_bytes(b"original\r\n")
-    security = fs.security_sddl(target)
-    fs.atomic_replace_text(target, "preserved\r\nnew line\n", newline="")
+    # Windows may recalculate the auto-inherited bookkeeping bit when
+    # applying a descriptor. The owner, trustees, ACEs and DACL protection
+    # are the security properties the replacement must actually preserve.
+    with fs._directory_chain(tmp_path) as parent:
+        with fs._child(parent, target.name) as original:
+            security = fs._security_identity(fs._descriptor(original.value))
+        fs.atomic_replace_text(target, "preserved\r\nnew line\n", newline="")
+        with fs._child(parent, target.name) as replacement:
+            assert fs._security_identity(fs._descriptor(replacement.value)) == security
     assert target.read_bytes() == b"preserved\r\nnew line\n"
-    assert fs.security_sddl(target) == security
     assert not list(tmp_path.glob("*.partial"))
 
 

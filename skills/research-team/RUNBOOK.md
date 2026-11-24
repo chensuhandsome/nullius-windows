@@ -117,7 +117,8 @@ In projects scaffolded by `research-team`, use the navigation front door instead
   - `<tag>_draft_convergence_log.md`
   - `<tag>_draft_converged_summary.md`
 - Run ledger: `team/trajectory_index.json` (machine-readable run history; linked from `team/LATEST.md` and any live cycle pointers).
-- Optional paper bundle export (project-local wrapper): `bash scripts/export_paper_bundle.sh --tag <run_id> --out export`.
+- Optional research file bundle (project-local wrapper): `bash scripts/export_paper_bundle.sh --tag <run_id> --out export`. It retains project-relative paths and source bytes, includes the human notebook and selected run, and follows local Markdown links and literal TeX inputs, figures and bibliography. Referenced directories and other runs are included in full; `MANIFEST.md` lists the actual scope. Missing or outside-project dependencies fail the export instead of producing a successful but broken bundle.
+- For a focused stage handoff, select its actual report/PDF and dependencies: `bash scripts/export_paper_bundle.sh --tag <run_id> --without-project-docs --include reports/stage.md --include paper/main.pdf`. Add `--writer-export paper/export_manifest.json` to consume an existing research-writer output record. A requested but unsuccessful writer compilation is not accepted. Files are checked again in the isolated bundle; a file bundle does not establish scientific acceptance, reproduce arbitrary code imports, or create a host download link. Use the host's existing file delivery capability to hand over the selected reading file and archive.
 
 ## Common failures (what failed → how to fix → how to rerun)
 
@@ -270,36 +271,54 @@ In projects scaffolded by `research-team`, use the navigation front door instead
   rendering checks, result links, automatic tables, formula counts, completed
   checklists, and the writer's assessment cannot supply a content verdict.
 - After rewriting the affected sections into a coherent whole, finish the
-  notebook and refresh its automatic block. From the external project root:
+  notebook. From the external project root:
 
   ```bash
-  nullius notebook sync
   nullius notebook review --model claude/opus --dependency <project-relative-path>
   nullius notebook check --json
   ```
 
 - Repeat `--dependency` for every required supporting file; omit it only when
-  no such dependency is needed. The review executes a real reviewer once via
-  review-swarm, with a default hard 1200-second timeout and no automatic retry.
+  no such dependency is needed. One semantic review executes via review-swarm
+  in bounded calls, with a default hard 1200-second timeout and no automatic retry.
   `--timeout-secs <N>` sets a different hard limit.
-- Review identity binds SHA-256 of the complete UTF-8 notebook, including the
-  automatic block, and required dependency bytes, including uncommitted edits.
+- Review identity binds SHA-256 of the complete UTF-8 notebook and required dependency bytes, including uncommitted edits.
   Commit and section version stamps do not replace those hashes. Changed bytes
   make earlier acceptance stale; preserve historical reports and their input
   identities rather than rewriting them.
 
 
-  Automatically linked binary or oversized files are immutable opaque snapshots
-  and SHA-256 locators in `opaque_links`. They participate in review-swarm manifest
-  freshness, but are neither embedded nor read. The report's `opaque_sources` must
-  explain every path, hash and `required_for_reasoning`; a missing assessment or any
-  required unread source prevents acceptance. Supply independently checked readable
-  text dependencies for reasoning that depends on such material. Hash identity is
-  not semantic reading. The notebook and explicit `--dependency` inputs require
-  strict UTF-8; the text packet closure is limited to 1 MiB and total snapshot
-  storage to 64 MiB, with refusal rather than silent truncation. This review
-  currently accepts only tool mode `none`; other modes are unavailable. It executes
-  one reviewer and does not establish a cross-family quorum.
+  In the default recursive profile: Valid UTF-8 text remains text regardless of size; Markdown links are discovered
+  recursively. Binary or invalid UTF-8 linked files are immutable `opaque_links`
+  snapshots and hash locators, not read evidence. Every opaque path/hash needs a
+  specific `opaque_sources` assessment; a required unread source prevents acceptance.
+  Notebook and explicit dependencies require strict UTF-8 and LF or CRLF endings.
+
+  The complete material is frozen before review. Storage (`--snapshot-bytes`,
+  default 512 MiB; `--max-files`, default 256) is separate from each request's
+  `--context-bytes` and configured backend `--context-tokens` window (default
+  200,000 tokens, with instruction/output reserves). Default request bytes use a
+  conservative token upper bound. A larger explicit byte packet requires captured
+  backend token usage when that bound exceeds the window; missing capacity evidence,
+  observed backend compaction or delivery failure supplies no acceptance.
+
+  In that recursive profile, larger materials use original UTF-8 intervals with adjacent original context,
+  followed by a joint audit receiving the COMPLETE original notebook and text
+  dependencies. All intervals and the joint audit must be complete and fresh;
+  selected quotations or summaries cannot replace this original input. The default
+  execution budget is 1200 seconds and 64 calls (`--timeout-secs`, `--max-batches`),
+  with one attempt per call and no automatic retry. Shortfalls expose total frozen
+  material, pending intervals and joint scope, the reason and a resumable command.
+  An unfinished intake reports discovered material and incomplete dependency
+  enumeration. `--resume <run-id>` creates a new run, revalidates original receipts
+  and material identity, retains explicit dependencies and storage budgets, and
+  never rewrites old evidence. If the full joint input does not fit the backend,
+  raise an available backend's request budget or leave the review incomplete.
+  Only tool mode `none` is accepted. Multiple batches are one semantic review;
+  they do not establish independent confirmations or a cross-family quorum.
+
+With `--evidence-manifest <project-relative JSON>`, declared evidence uses a different material organization: the complete notebook and every declared primary text original are read, reference candidates remain explicit unread provenance until adjudicated, and the final integration receives the complete notebook plus canonical source-review evidence and byte-checked original excerpts. Every notebook section and primary interval must be covered. Every discovered reference is re-adjudicated; a necessary unread source or additional-context request prevents acceptance. This profile never claims the entire recursive history was read. Real tool-mode-none execution, capacity evidence, freshness and immutable history requirements still apply.
+
 - The report needs full-text coverage of every section and readable dependency, plus assessment of opaque sources,
   with source-anchored reasons on derivation completeness, logic, symbols,
   definitions, assumptions and conventions. An excerpt-only or delta-only review
@@ -376,20 +395,13 @@ the full default check, whose structural scope includes every current result.
 - Rerun:
   - Preflight-only command.
 
-### Double-backslash math gate (global scan)
+### Ambiguous math escapes
 
-- Gate: [check_double_backslash_math.py](scripts/gates/check_double_backslash_math.py)
-- Symptom: `double-backslash math gate failed`
-- Scope: uses the same scan targets as the Markdown math hygiene gate (`markdown_math_hygiene.targets` / `exclude_globs`).
-- Fix:
-  - Deterministic fix (recommended; targets key docs only): `python3 "${SKILL_DIR}/scripts/bin/fix_markdown_double_backslash_math.py" --notes research_contract.md --in-place`
-  - Check-only helper (warn or fail): `bash "${SKILL_DIR}/scripts/bin/check_md_double_backslash.sh" --notes research_contract.md [--fail]`
-  - Notes:
-    - The fixer only rewrites inside Markdown math regions (`$...$`, `$$...$$`) and never touches fenced code blocks.
-    - It does NOT rewrite real LaTeX line breaks (`\\`) or spacing commands (`\\[2pt]`).
-- For generated TOC math escapes such as `$\\gamma\\_{\\rm lin}$`, use `markdown-hygiene` (`fix-toc`) before rerunning preflight.
-- Rerun:
-  - Preflight-only command.
+Inspect the source and intended rendered surface. Doubled backslashes may be
+legitimate TeX row breaks, including immediately before a letter in an aligned
+expression or matrix. Resolve ambiguous escaping from context; do not apply a
+bulk backslash replacement. The generic Markdown math hygiene and portability
+checks remain available for their documented formatting diagnostics.
 
 ### LaTeX macro hygiene gate (global scan)
 
@@ -473,6 +485,7 @@ the full default check, whose structural scope includes every current result.
     - Explicit Claude/Gemini split (another option): `bash "${SKILL_DIR}/scripts/bin/check_environment.sh" --require-claude --require-gemini`
   - Ensure `prompts/_system_member_a.txt` and `prompts/_system_member_b.txt` exist.
   - If you have project-local runners, confirm `scripts/run_codex.sh`, `scripts/run_claude.sh`, and `scripts/run_gemini.sh` are executable as needed.
+  - **Refreshing the Claude runner copy.** `scripts/run_claude.sh` in a project is a copy of `assets/run_claude.sh` and runs the reviewer with `--safe-mode` (login kept; your user/project `CLAUDE.md`, `AGENTS.md` and auto memory are not loaded, measured with marker files; the skills and agents of user-installed plugins are absent from the stream's init event; hooks and the git status snapshot are excluded according to the CLI documentation, and managed-policy settings and hooks still apply; see `claude-cli-runner` SKILL.md, **Context sources**) and `CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1`. Projects scaffolded earlier hold an older copy without the `research-team-claude-runner: context-excluded` marker line (or without `--safe-mode` on every `claude --print` line); `run_team_cycle.sh` does not use such a copy but substitutes `claude-cli-runner` for the run and prints a `[warn]` line. Migration, once per existing project: `cp "${SKILL_DIR}/assets/run_claude.sh" scripts/run_claude.sh && chmod +x scripts/run_claude.sh`. For a customized copy instead: put `--safe-mode` on every `claude --print` line (the asset has two: with and without `--model`; the resolver requires the flag as an option on each, not in a trailing comment), export `CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1`, and add the comment line `research-team-claude-runner: context-excluded`; without the marker the copy is still replaced. `prune_optional_scaffold.py` treats a copy identical to the asset as default, so a refreshed copy can still be pruned.
   - If Gemini CLI returns a blank response (common after CLI upgrades / auth drift), `run_team_cycle.sh` fails closed. Choose a provider explicitly before rerunning:
     - CLI: `run_team_cycle.sh --member-b-runner-kind claude`
     - Config: set `member_b.runner_kind=claude` (optional `member_b.claude_system_prompt`) in `research_team_config.json`.
@@ -530,8 +543,7 @@ the full default check, whose structural scope includes every current result.
     any escalation trigger above.
   - The delta confirmation above applies to the selected member-cycle candidate;
     it cannot satisfy `notebook.content_review`. Any edit to the notebook or a
-    required dependency requires a new review of the entire current notebook,
-    including its automatic block, before scientific notebook closeout.
+    required dependency requires a new review of the entire current notebook before scientific notebook closeout.
   - Either way the confirmation round is mandatory after every fix batch —
     convergence is declared by the reviewers on the current artifact, never
     by the leader after applying fixes.

@@ -7,6 +7,8 @@ set -euo pipefail
 # - Avoids copy/paste errors with long prompts
 # - Adds exponential backoff for transient overload/5xx
 # - Keeps tool access disabled by default
+# - Keeps the operator's own context (user/project CLAUDE.md, auto memory, plugins, hooks) out of
+#   the lane by default (--safe-mode), recording what was allowed in context_sources.json
 
 MODEL=""
 SYSTEM_PROMPT_FILE=""
@@ -29,7 +31,9 @@ INACTIVITY_SECS=0
 INACTIVITY_GRACE_SECS=30
 TRACE_DIR=""
 ACTIVE_PID=""
+HERMETIC=1
 PROCESS_BUDGET="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/process_budget.py"
+CONTEXT_SOURCES="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/context_sources.py"
 
 usage() {
   cat <<'EOF'
@@ -44,10 +48,14 @@ Options:
   --tools TOOLS            Explicit tool list override. Use "" to disable all tools.
   --strict-mcp-config      Default: enabled (skip MCP tool loading)
   --no-strict-mcp-config   Disable --strict-mcp-config
+  --load-operator-context  Let the CLI load the operator's own context (user and project CLAUDE.md,
+                           AGENTS.md, auto memory, plugins, hooks, skills). Default: excluded with
+                           --safe-mode, which keeps the login; the lane is then recorded as not hermetic.
   --system-prompt-file F   Required
   --prompt-file F          Required
   --out PATH               Required (stdout+stderr captured)
   --dry-run                Print invocation details and exit 0 (no Claude call)
+  --check-client           Show the selected client version and check the baseline CLI flags offline.
   --max-retries N          Default: 6
   --sleep-secs SECONDS     Default: 10 (base; exponential backoff)
   --timeout-secs SECONDS   Explicit hard cap across calls/backoff; default: no hard budget (0).
@@ -68,13 +76,16 @@ Session continuation (OPT-IN; the default stays a clean-room one-shot with --no-
 EOF
 }
 
+CHECK_CLIENT=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --check-client) CHECK_CLIENT=1; shift;;
     --model) MODEL="$2"; shift 2;;
     --tool-mode) TOOL_MODE="$2"; shift 2;;
     --tools) TOOLS="$2"; TOOLS_EXPLICIT=1; shift 2;;
     --strict-mcp-config) STRICT_MCP_CONFIG=1; shift 1;;
     --no-strict-mcp-config) STRICT_MCP_CONFIG=0; shift 1;;
+    --load-operator-context) HERMETIC=0; shift 1;;
     --system-prompt-file) SYSTEM_PROMPT_FILE="$2"; shift 2;;
     --prompt-file) PROMPT_FILE="$2"; shift 2;;
     --out) OUT="$2"; shift 2;;
@@ -94,6 +105,10 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown arg: $1" >&2; usage; exit 2;;
   esac
 done
+
+if [[ "$CHECK_CLIENT" == 1 ]]; then
+  exec python3 "$(dirname "${BASH_SOURCE[0]}")/client_compat.py" check claude "" --print --tools --output-format --strict-mcp-config
+fi
 
 if [[ -z "${SYSTEM_PROMPT_FILE}" || -z "${PROMPT_FILE}" || -z "${OUT}" ]]; then
   echo "Missing required args." >&2
@@ -129,6 +144,18 @@ esac
 STRICT_ARG=()
 if [[ "${STRICT_MCP_CONFIG}" -eq 1 ]]; then
   STRICT_ARG=(--strict-mcp-config)
+fi
+
+# Context sources: by default a lane carries only its own request. --safe-mode keeps the operator's
+# login but loads no user/project CLAUDE.md or AGENTS.md, no auto memory, no plugins, hooks or skills
+# (--bare would also drop them but refuses the login; --setting-sources "" still loads auto memory).
+CONTEXT_ARGS=()
+CONTEXT_MODE="operator"
+if [[ "${HERMETIC}" -eq 1 ]]; then
+  CONTEXT_ARGS=(--safe-mode)
+  CONTEXT_MODE="hermetic"
+  # The git status snapshot can carry commit subjects of the operator's checkout.
+  export CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1
 fi
 
 # Session semantics: the runner's default contract is a CLEAN-ROOM one-shot (claude
@@ -211,6 +238,11 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
   else
     echo "Strict MCP config: disabled (--no-strict-mcp-config)"
   fi
+  if [[ "${HERMETIC}" -eq 1 ]]; then
+    echo "Operator context: excluded (--safe-mode, CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1: no user/project CLAUDE.md, AGENTS.md, auto memory, plugins, hooks, skills, git status snapshot)"
+  else
+    echo "Operator context: loaded (--load-operator-context; lane is not hermetic)"
+  fi
   echo "System prompt file: ${SYSTEM_PROMPT_FILE} (bytes=${sys_size}, sha256=${sys_sha})"
   echo "Prompt file (stdin): ${PROMPT_FILE} (bytes=${prompt_size}, sha256=${prompt_sha})"
   echo "Output: ${OUT} (buffered bytes preserved unless live capture is enabled)"
@@ -239,6 +271,9 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
   fi
   if [[ "${STRICT_MCP_CONFIG}" -eq 1 ]]; then
     echo -n " --strict-mcp-config"
+  fi
+  if [[ "${HERMETIC}" -eq 1 ]]; then
+    echo -n " --safe-mode"
   fi
   if [[ -n "${MODEL}" ]]; then
     echo -n " --model ${MODEL}"
@@ -278,6 +313,11 @@ policy_args=(--timeout-secs "${TIMEOUT_SECS}" --expected-secs "${EXPECTED_SECS}"
 if [[ "${LIVE_CAPTURE}" -eq 1 ]]; then policy_args+=(--capture); fi
 python3 "${PROCESS_BUDGET}" init --state "${BUDGET_STATE}" --max-attempts "${MAX_RETRIES}" \
   "${policy_args[@]}" --prompt-file "${PROMPT_FILE}" --system-file "${SYSTEM_PROMPT_FILE}" --out "${OUT}"
+# A rejected answer from an earlier run must not sit beside this run's result.
+rm -f "${OUT}.not-hermetic" "${OUT}.not-hermetic.partial"
+context_declare_args=(--mode "${CONTEXT_MODE}")
+if [[ "${LIVE_CAPTURE}" -eq 1 ]]; then context_declare_args+=(--live-capture); fi
+python3 "${CONTEXT_SOURCES}" declare "${context_declare_args[@]}" --out "${TRACE_RUN_DIR}/context_sources.json"
 tmp_out="${TRACE_RUN_DIR}/buffered-output.txt"
 tmp_stdout=""
 tmp_stderr=""
@@ -404,6 +444,7 @@ classify_deterministic_failure() {
         'no such file or directory' \
         'usage:' \
         'unrecognized argument' \
+        'unknown option' \
         'invalid value' \
         'not eligible' \
         'not currently available in your location' \
@@ -442,16 +483,36 @@ while true; do
     "${session_capture_args[@]+"${session_capture_args[@]}"}" --out "${OUT}" --stdin "${PROMPT_FILE}" \
     --stdout "${tmp_stdout}" --stderr "${tmp_stderr}" -- \
     claude --print "${SESSION_ARGS[@]+"${SESSION_ARGS[@]}"}" "${FORMAT_ARGS[@]+"${FORMAT_ARGS[@]}"}" \
-    "${STRICT_ARG[@]+"${STRICT_ARG[@]}"}" "${MODEL_ARG[@]+"${MODEL_ARG[@]}"}" --tools "${TOOLS}" \
+    "${STRICT_ARG[@]+"${STRICT_ARG[@]}"}" "${CONTEXT_ARGS[@]+"${CONTEXT_ARGS[@]}"}" \
+    "${MODEL_ARG[@]+"${MODEL_ARG[@]}"}" --tools "${TOOLS}" \
     --input-format text --system-prompt "${SYSTEM_PROMPT}" &
   ACTIVE_PID=$!
   code=0
   wait "${ACTIVE_PID}" || code=$?
   ACTIVE_PID=""
 
+  if [[ "${code}" -ne 0 ]] && python3 "${PROCESS_BUDGET%/*}/client_compat.py" options claude "${tmp_stderr}"; then
+    write_attempt_logs "${attempt}" "${code}" 0 "${tmp_stdout}" "${tmp_stderr}"
+    det_reason="$(classify_deterministic_failure "${code}" "${tmp_stderr}" || printf 'unsupported CLI option')"
+    echo "Claude failed with a deterministic error (${det_reason}); not retrying." >&2
+    exit "${code}"
+  fi
+
   if [[ "${LIVE_CAPTURE}" -eq 1 ]]; then
     sleep_for=0
     write_attempt_logs "${attempt}" "${code}" "${sleep_for}" "${tmp_stdout}" "${tmp_stderr}"
+    # The stream's init event names the auto-memory location when memory was loaded. A lane
+    # declared hermetic that shows one (or succeeds without any init event) is rejected, not retried:
+    # the same configuration would load the same context again.
+    observe_code=0
+    python3 "${CONTEXT_SOURCES}" observe --mode "${CONTEXT_MODE}" --events "${tmp_stdout}" \
+      --exit-code "${code}" --out "${TRACE_RUN_DIR}/attempt_${attempt}.context_observed.json" || observe_code=$?
+    if [[ "${observe_code}" -ne 0 ]]; then
+      # Keep the evidence, but never leave a rejected lane's answer where a result is read.
+      if [[ -e "${OUT}" ]]; then mv -f "${OUT}" "${OUT}.not-hermetic"; fi
+      if [[ -e "${OUT}.partial" ]]; then mv -f "${OUT}.partial" "${OUT}.not-hermetic.partial"; fi
+      exit "${observe_code}"
+    fi
     if [[ "${code}" -eq 0 ]]; then exit 0; fi
     if det_reason="$(classify_deterministic_failure "${code}" "${tmp_stderr}" "${tmp_stdout%.jsonl}.error.log")"; then
       echo "Claude failed with a deterministic error (${det_reason}); not retrying." >&2
@@ -476,21 +537,33 @@ while true; do
     if python3 - "${tmp_stdout}" "${tmp_out}" "${SESSION_ID_FILE}" <<'PY'
 import json
 import sys
+from pathlib import Path
 
-raw = open(sys.argv[1], encoding="utf-8", errors="replace").read()
-obj = json.loads(raw)
-result = obj.get("result")
-sid = obj.get("session_id")
-if not isinstance(result, str) or not isinstance(sid, str) or not sid:
-    raise SystemExit(1)
+try:
+    obj = json.loads(Path(sys.argv[1]).read_bytes())
+except (UnicodeError, ValueError):
+    raise SystemExit(65)
+if not isinstance(obj, dict):
+    raise SystemExit(65)
+if obj.get("is_error") or str(obj.get("subtype", "")).startswith("error"):
+    sys.exit("Claude reported an unsuccessful terminal result.")
+result, sid = obj.get("result"), obj.get("session_id")
+if not isinstance(result, str) or not isinstance(sid, str) or not sid.strip():
+    raise SystemExit(65)
+if not result.strip():
+    sys.exit("Claude returned an empty result.")
 open(sys.argv[2], "w", encoding="utf-8").write(result)
 open(sys.argv[3], "w", encoding="utf-8").write(sid + "\n")
 PY
     then
       :
     else
-      echo "Warning: could not parse the claude JSON envelope; OUT falls back to raw stdout+stderr and NO session id was captured." >&2
-      cat "${tmp_stdout}" "${tmp_stderr}" >"${tmp_out}" || true
+      parse_code=$?
+      if [[ "${parse_code}" -eq 65 ]]; then
+        python3 "${PROCESS_BUDGET%/*}/client_compat.py" output claude 'result JSON with result and session_id'
+      fi
+      write_attempt_logs "${attempt}" "${parse_code}" 0 "${tmp_stdout}" "${tmp_stderr}"
+      exit "${parse_code}"
     fi
   else
     cat "${tmp_stdout}" "${tmp_stderr}" >"${tmp_out}" || true

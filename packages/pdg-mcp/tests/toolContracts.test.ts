@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { getToolSpecs, getTools, handleToolCall } from '../src/tools/index.js';
+import { findBudgetBoundMismatches, findRequiredKeyMismatches } from '@nullius/shared';
 import { zodToMcpInputSchema } from '../src/tools/mcpSchema.js';
 import type { ToolExposureMode, ToolSpec } from '../src/tools/registry.js';
 
@@ -98,5 +99,77 @@ describe('Tool registry contracts (M0)', () => {
     const spec = getToolSpecs('standard').find(s => s.name === 'pdg_get_reference');
     expect(spec).toBeDefined();
     expect(spec!.zodSchema.safeParse({ id: -1 }).success).toBe(false);
+  });
+
+  it('pdg_get_property exposes stored-value inputs only and refuses unknown parameters', () => {
+    const spec = getToolSpecs('standard').find(s => s.name === 'pdg_get_property')!;
+    const schema = getTools('standard').find(t => t.name === 'pdg_get_property')!.inputSchema;
+    expect(schema.properties).not.toHaveProperty('allow_derived');
+    expect(schema.additionalProperties).toBe(false);
+    expect(spec.zodSchema.safeParse({
+      particle: { name: 'W' }, property: 'width', allow_derived: true,
+    }).success).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MCP annotations, titles and structuredContent
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('MCP annotations and titles', () => {
+  it('every listed tool carries a non-empty title and all four boolean hints', () => {
+    const issues: string[] = [];
+    for (const tool of getTools('full')) {
+      if (typeof tool.title !== 'string' || tool.title.trim() === '') issues.push(`${tool.name}: missing title`);
+      const annotations = tool.annotations as unknown as Record<string, unknown> | undefined;
+      for (const hint of ['readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint']) {
+        if (typeof annotations?.[hint] !== 'boolean') issues.push(`${tool.name}: ${hint} is not a boolean`);
+      }
+    }
+    expect(issues).toEqual([]);
+  });
+});
+
+describe('structuredContent', () => {
+  it('mirrors the JSON text block of an object result and is absent otherwise', async () => {
+    const spec = getToolSpecs('full').find(s => s.name === 'pdg_info')!;
+    const original = spec.handler;
+    try {
+      spec.handler = (async () => ({ id: 'x', nested: { values: [1, 2] }, skipped: undefined })) as typeof spec.handler;
+      const res = await handleToolCall('pdg_info', {}, 'full');
+      expect(res.isError).not.toBe(true);
+      expect(res.structuredContent).toBeDefined();
+      expect(res.structuredContent).toEqual(JSON.parse(res.content[0]!.text));
+
+      spec.handler = (async () => [1, 2]) as typeof spec.handler;
+      const arrayRes = await handleToolCall('pdg_info', {}, 'full');
+      expect(arrayRes.structuredContent).toBeUndefined();
+    } finally {
+      spec.handler = original;
+    }
+  });
+});
+
+describe('Tool inputSchema required keys', () => {
+  it.each<ToolExposureMode>(['standard', 'full'])('required lists exactly the keys whose omission fails to parse (%s)', mode => {
+    const specs = new Map(getToolSpecs(mode).map(spec => [spec.name, spec]));
+    const defs = getTools(mode);
+    expect(defs.length).toBeGreaterThan(0);
+    const issues = defs.flatMap(def => {
+      const spec = specs.get(def.name);
+      if (!spec) return [`[${def.name}] no tool spec`];
+      return findRequiredKeyMismatches(spec.zodSchema, def.inputSchema).map(issue => `[${def.name}] ${issue}`);
+    });
+    expect(issues).toEqual([]);
+  });
+
+  it.each<ToolExposureMode>(['standard', 'full'])('budget fields publish the bounds their parser applies (%s)', mode => {
+    const specs = new Map(getToolSpecs(mode).map(spec => [spec.name, spec]));
+    const issues = getTools(mode).flatMap(def => {
+      const spec = specs.get(def.name);
+      if (!spec) return [`[${def.name}] no tool spec`];
+      return findBudgetBoundMismatches(spec.zodSchema, def.inputSchema).map(issue => `[${def.name}] ${issue}`);
+    });
+    expect(issues).toEqual([]);
   });
 });

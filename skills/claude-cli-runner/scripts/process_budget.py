@@ -202,6 +202,7 @@ class Capture:
                 self.state["capture_health"] = "degraded"
                 continue
             if not isinstance(obj, dict):
+                self.state["unparsed_lines"] += 1
                 self.complete_text.error_seen = True
                 self.state["capture_health"] = "degraded"
                 continue
@@ -428,6 +429,10 @@ def main() -> int:
                 capture.read(final=True)
                 terminal = capture.terminal
                 if code == 0:
+                    kinds = progress['event_kinds']
+                    if not terminal and (kinds or progress['unparsed_lines']) and not (kinds.keys() - {'unknown'}):
+                        from client_compat import main as report_client_compat
+                        report_client_compat(['output', command[0], 'stream-json events'])
                     if (not terminal or terminal.get('is_error') or terminal.get('subtype') != 'success'
                             or not isinstance(terminal.get('result'), str) or not terminal['result'].strip()):
                         code = 65
@@ -435,7 +440,9 @@ def main() -> int:
                     else:
                         try:
                             args.out.write_bytes(capture.complete_text.success_text(code).encode("utf-8"))
-                        except CompleteTextError:
+                        except CompleteTextError as exc:
+                            with capture.error_path.open('a', encoding='utf-8') as error_log:
+                                error_log.write(str(exc) + '\n')
                             code = 65
                             termination_reason = 'incomplete_or_error_result'
                         if code == 0 and args.session_id_file and isinstance(terminal.get('session_id'), str):

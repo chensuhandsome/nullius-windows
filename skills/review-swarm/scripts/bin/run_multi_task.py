@@ -191,7 +191,7 @@ def _atomic_write_text(path: Path, text: str) -> None:
         raise
 
 
-def _agent_skills_root() -> Path:
+def _agent_skills_root(backend: Optional[str] = None) -> Path:
     """Host-neutral agent skills root holding the sibling runner skills.
 
     Prefer runners alongside this skill; otherwise honor an advertised host home
@@ -200,10 +200,14 @@ def _agent_skills_root() -> Path:
     location (which also covers hosts not listed here). Explicit `--*-runner`
     flags override the result entirely.
     """
-    # A complete checkout/plugin carries its own reviewed runner versions.
+    # A checkout/plugin or selective copy install can carry its own runner.
+    # Resolve each backend separately so one backend's presence is not required
+    # to discover another, and a partial install can still use host runners.
     # Explicit command-line runner overrides still take precedence.
     sibling_root = Path(__file__).resolve().parents[3]
-    if (sibling_root / "claude-cli-runner" / "scripts" / "run_claude.sh").is_file():
+    backends = (backend,) if backend else ("claude", "codex", "gemini", "kimi", "opencode")
+    if any((sibling_root / f"{name}-cli-runner" / "scripts" / f"run_{name}.sh").is_file()
+           for name in backends):
         return sibling_root
     for env_var in ("CLAUDE_CONFIG_DIR", "CODEX_HOME"):
         val = os.environ.get(env_var, "").strip()
@@ -217,23 +221,23 @@ def _agent_skills_root() -> Path:
 
 
 def _opencode_runner() -> Path:
-    return _agent_skills_root() / "opencode-cli-runner" / "scripts" / "run_opencode.sh"
+    return _agent_skills_root("opencode") / "opencode-cli-runner" / "scripts" / "run_opencode.sh"
 
 
 def _claude_runner() -> Path:
-    return _agent_skills_root() / "claude-cli-runner" / "scripts" / "run_claude.sh"
+    return _agent_skills_root("claude") / "claude-cli-runner" / "scripts" / "run_claude.sh"
 
 
 def _codex_runner() -> Path:
-    return _agent_skills_root() / "codex-cli-runner" / "scripts" / "run_codex.sh"
+    return _agent_skills_root("codex") / "codex-cli-runner" / "scripts" / "run_codex.sh"
 
 
 def _gemini_runner() -> Path:
-    return _agent_skills_root() / "gemini-cli-runner" / "scripts" / "run_gemini.sh"
+    return _agent_skills_root("gemini") / "gemini-cli-runner" / "scripts" / "run_gemini.sh"
 
 
 def _kimi_runner() -> Path:
-    return _agent_skills_root() / "kimi-cli-runner" / "scripts" / "run_kimi.sh"
+    return _agent_skills_root("kimi") / "kimi-cli-runner" / "scripts" / "run_kimi.sh"
 
 
 def _require_file(p: Path, *, label: str) -> None:
@@ -1117,9 +1121,19 @@ def _stop_and_collect(proc: subprocess.Popen, reader: Optional[_PipeReader]) -> 
     return reader.result()
 
 
-def _run_with_timeout(cmd: list[str], *, timeout_secs: float, context_tokens: Optional[int] = None) -> dict[str, Any]:
+def _redact_gemini_home(text: str, home: str) -> str:
+    # Structured responses can contain the JSON-escaped Windows spelling.
+    spellings = (home, Path(home).as_posix())
+    for spelling in spellings:
+        for form in (json.dumps(spelling)[1:-1], json.dumps(spelling, ensure_ascii=False)[1:-1], spelling):
+            text = text.replace(form, "[Gemini home]")
+    return text
+
+
+def _run_with_timeout(cmd: list[str], *, timeout_secs: float, context_tokens: Optional[int] = None,
+                      backend: Optional[str] = None) -> dict[str, Any]:
     global _MAIN_SPAWNING
-    observation = runtime_capture_observation._prepare(cmd, context_tokens=context_tokens)
+    observation = runtime_capture_observation._prepare(cmd, context_tokens=context_tokens, backend=backend)
     on_main_thread = threading.current_thread() is threading.main_thread()
     if _sigchld_ignored():
         # main() sets SIGCHLD to its default on the main thread; a caller that
@@ -1259,19 +1273,19 @@ def _run_one(
             },
         )
 
-    prior_capture_runs = set(Path(str(out_path)+".attempts").glob("run.*")) if plan.backend == "claude" else set()
+    prior_capture_runs = set(Path(str(out_path)+".attempts").glob("run.*")) if plan.backend in {"claude", "kimi"} else set()
     try:
-        proc = _run_with_timeout(cmd, timeout_secs=remaining, **({"context_tokens": budget.context_tokens} if budget.context_tokens is not None else {}))
+        proc = _run_with_timeout(cmd, timeout_secs=remaining, context_tokens=budget.context_tokens, backend=plan.backend)
         if gemini_cli_home:
             for stream in ("stdout", "stderr"):
-                proc[stream] = proc[stream].replace(gemini_cli_home, "[Gemini home]")
+                proc[stream] = _redact_gemini_home(proc[stream], gemini_cli_home)
             if out_path.is_file():
                 output_text = out_path.read_text(encoding="utf-8")
-                if gemini_cli_home in output_text:
+                redacted = _redact_gemini_home(output_text, gemini_cli_home)
+                if redacted != output_text:
                     # The original report is already runtime-observed. Redaction
                     # is a separately named diagnostic view, never original bytes.
-                    _atomic_write_text(Path(str(out_path) + ".redacted-view.txt"),
-                                       output_text.replace(gemini_cli_home, "[Gemini home]"))
+                    _atomic_write_text(Path(str(out_path) + ".redacted-view.txt"), redacted)
         result = {
             "index": plan.index,
             "backend": plan.backend,
@@ -1285,7 +1299,7 @@ def _run_one(
         }
         result["reported_model"] = None
         result["progress"] = {"capture_health": "unknown"}
-        if plan.backend == "claude":
+        if plan.backend in {"claude", "kimi"}:
             current_runs = set(Path(str(out_path)+".attempts").glob("run.*")) - prior_capture_runs
             if len(current_runs) == 1:
                 capture_root = next(iter(current_runs))
@@ -1303,6 +1317,10 @@ def _run_one(
                         result["capture_receipt"] = str(receipt_path)
         if result.get("runner_failure_reason") == "hard_budget_exhausted":
             result["timed_out"] = True
+        # The Claude runner rejects a lane that loaded the operator's memory (exit 78). That is a
+        # configuration fault of this machine, not a backend outage and not review content.
+        if not result.get("success") and "claude lane rejected" in proc.get("stderr", "").lower():
+            result["runner_failure_reason"] = "not_hermetic"
         if not result.get("success") and not result.get("runner_failure_reason"):
             diagnostics = proc.get("stderr", "").lower()
             if "deterministic error" in diagnostics:
@@ -1653,6 +1671,8 @@ def _classify_failure(failure_reason: Optional[str]) -> Optional[str]:
     if failure_reason is None:
         return None
     reason = str(failure_reason)
+    if reason == "not_hermetic":
+        return "configuration"
     if reason in _INFRASTRUCTURE_FAILURE_REASONS or reason.startswith(("exit_code_", "deterministic_")) or reason in {
         "hard_budget_exhausted", "confirmed_inactivity", "user_cancelled", "transient_transport"
     }:

@@ -4,6 +4,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { TextDecoder } from 'node:util';
 import { fromMarkdown } from 'mdast-util-from-markdown';
+import { mathFromMarkdown } from 'mdast-util-math';
+import { math } from 'micromark-extension-math';
 import type { Nodes } from 'mdast';
 import Ajv2020 from 'ajv/dist/2020.js';
 import type { ArtifactRefV1, VerificationSubjectV1, VerificationCheckRunV1,
@@ -15,8 +17,9 @@ import { loadVerifiedRunJson, resolveVerifiedRunArtifact } from './orch-tools/va
 import { installedRuntimeRoot } from './cli-runtime.js';
 import { pythonExecutable } from './python-runtime.js';
 import { stampRunDirectory } from './run-stamp.js';
+import { assertNotebookRunStates, captureNotebookRunStates, notebookRunStatesCurrent, type NotebookRunState } from './notebook-run-state.js';
 import { notebookBudgets, notebookShellWord, NotebookRequestCapacityError, assessNotebookRequestCapacity, executeNotebookBatches, assessNotebookBatches, loadNotebookBatchHistory, type NotebookBudgets, type BatchExecution, type BatchPlan } from './notebook-review-batches.js';
-import { textOutsideNotebookCurrentState } from './notebook-current-state.js';
+import { freezeDeclaredEvidenceScope, assertDeclaredEvidenceScope, declaredEvidenceIsCurrent, type EvidenceReference } from './notebook-evidence-scope.js';
 import artifactSchema from '../../../meta/schemas/artifact_ref_v1.schema.json' with { type: 'json' };
 import subjectSchema from '../../../meta/schemas/verification_subject_v1.schema.json' with { type: 'json' };
 import checkSchema from '../../../meta/schemas/verification_check_run_v1.schema.json' with { type: 'json' };
@@ -39,12 +42,16 @@ const ajv = new (Ajv2020 as any)({ allErrors: true, strict: false, validateForma
 ajv.addSchema(artifactSchema);
 const validators = [subjectSchema, checkSchema, verdictSchema, coverageSchema].map(schema => ajv.compile(schema));
 
-type Input = { path: string; sha256: string; bytes: number; snapshot_ref: ArtifactRefV1 };
+export type Input = { path: string; sha256: string; bytes: number; snapshot_ref: ArtifactRefV1 };
+type NavigationLink = { source: string; destination: string };
 export type NotebookReviewSection = { section_id: string; heading: string; start_line: number; end_line: number; sha256: string };
 export type NotebookReviewScope = {
   schema_version: 1; review_kind: 'notebook'; extraction_policy: typeof POLICY;
   notebook: Input; dependencies: Input[]; opaque_links?: Input[]; sections: NotebookReviewSection[];
   explicit_dependencies: string[]; directory_links: string[]; remote_links: string[];
+  evidence?: { policy: 'declared-evidence'; manifest: Input; references: EvidenceReference[] };
+  navigation_links?: NavigationLink[];
+  run_states: NotebookRunState[];
 };
 type ReviewPointer = { schema_version: 1; run_id: string; verification_refs: {
   subject_refs: ArtifactRefV1[]; check_run_refs: ArtifactRefV1[];
@@ -127,18 +134,33 @@ export function notebookReviewSections(text: string): NotebookReviewSection[] {
   });
 }
 
-function destinations(text: string): string[] {
-  const tree = fromMarkdown(text);
-  const definitions = new Map<string, string>();
-  visit(tree, node => { if (node.type === 'definition') definitions.set(node.identifier, node.url); });
-  const targets: string[] = [];
+function destinations(text: string): { url: string; navigation: boolean }[] {
+  // Formula syntax is not a Markdown dependency; freeze the complete original bytes.
+  const tree = fromMarkdown(text, { extensions: [math()], mdastExtensions: [mathFromMarkdown()] });
+  const definitions = new Map<string, { url: string; title?: string | null }>();
+  visit(tree, node => { if (node.type === 'definition' && !definitions.has(node.identifier)) definitions.set(node.identifier, node); });
+  const targets: { url: string; navigation: boolean }[] = [];
   visit(tree, node => {
-    if (node.type === 'link' || node.type === 'image') targets.push(node.url);
+    if (node.type === 'link' || node.type === 'image') targets.push({ url: node.url,
+      navigation: node.type === 'link' && node.title === 'nullius-navigation' });
     if (node.type === 'linkReference' || node.type === 'imageReference') {
-      const target = definitions.get(node.identifier); if (target) targets.push(target);
+      const target = definitions.get(node.identifier); if (target) targets.push({ url: target.url,
+        navigation: node.type === 'linkReference' && target.title === 'nullius-navigation' });
     }
   });
   return targets;
+}
+
+// A navigation declaration stays visible in the full original text and the
+// review inventory. It cannot stand for an unread scientific dependency.
+// Validate local destinations without freezing a changing index or walking it.
+function checkNavigationTarget(projectRoot: string, source: string, destination: string): void {
+  if (destination.startsWith('#') || /^[a-z][a-z\d+.-]*:/i.test(destination) || destination.startsWith('//')) return;
+  const target = decodeURIComponent(destination.split(/[?#]/, 1)[0]!);
+  const filename = resolveWithinRoot(projectRoot, path.resolve(projectRoot, path.dirname(source), target), 'notebook navigation');
+  assertNoSymlinkComponents(projectRoot, filename, 'notebook navigation');
+  const stat = fs.statSync(filename);
+  if (!stat.isFile() && !stat.isDirectory()) throw new Error(`notebook navigation target is not a file or directory: ${destination}`);
 }
 
 function writeJson(filename: string, value: unknown): void {
@@ -210,8 +232,13 @@ function canPublishNotebookReview(projectRoot: string, runId: string): boolean {
   return latestNotebookStart(notebookStarts(projectRoot))?.run_id === runId;
 }
 
-export function freezeNotebookReviewScope(projectRoot: string, runId: string, runDir: string, dependencies: string[], budgets: NotebookBudgets = notebookBudgets({})): NotebookReviewScope {
+export function freezeNotebookReviewScope(projectRoot: string, runId: string, runDir: string, dependencies: string[], budgets: NotebookBudgets = notebookBudgets({}), evidenceManifest?: string, evidenceReferences?: EvidenceReference[]): NotebookReviewScope {
+  if (evidenceManifest !== undefined) {
+    const scope = freezeDeclaredEvidenceScope(projectRoot, runId, runDir, dependencies, budgets, evidenceManifest, notebookReviewSections, evidenceReferences);
+    return scope;
+  }
   const remote = new Set<string>(); const dirs = new Set<string>();
+  const navigation: NavigationLink[] = [];
   const inputs: Input[] = []; const opaque: Input[] = []; const seen = new Set<string>(); let notebookText = '';
   const explicit = [...new Set(dependencies.map(filename => path.relative(projectRoot,
     resolveWithinRoot(projectRoot, filename, '--dependency')).split(path.sep).join('/')))];
@@ -236,8 +263,8 @@ export function freezeNotebookReviewScope(projectRoot: string, runId: string, ru
     }
     snapshotTotal += bytes.length;
     if (snapshotTotal > budgets.snapshotBytes) shortfall(relative, snapshotTotal, 'Notebook storage budget exceeded during snapshot creation; retry with a larger --snapshot-bytes budget.');
-    if (relative === 'research_notebook.md' && (!text!.trim() || textOutsideNotebookCurrentState(text!) === null)) {
-      throw new Error('notebook is empty or has ambiguous managed-block markers');
+    if (relative === 'research_notebook.md' && !text!.trim()) {
+      throw new Error('notebook is empty');
     }
     if (relative === 'research_notebook.md') notebookText = text!;
     const snapshotPath = path.join(runDir, 'inputs', `source-${inputs.length + opaque.length}.${text === null ? 'bin' : 'txt'}`);
@@ -253,7 +280,13 @@ export function freezeNotebookReviewScope(projectRoot: string, runId: string, ru
     if (text === null) continue;
     // Every valid UTF-8 text source can carry Markdown links. File extensions
     // do not define the recursively frozen material boundary.
-    for (const raw of destinations(text)) {
+    for (const link of destinations(text)) {
+      const raw = link.url;
+      if (link.navigation) {
+        checkNavigationTarget(projectRoot, relative, raw);
+        navigation.push({ source: relative, destination: raw });
+        continue;
+      }
       if (raw.startsWith('#')) continue;
       if (/^[a-z][a-z\d+.-]*:/i.test(raw) || raw.startsWith('//')) { remote.add(raw); continue; }
       let target: string;
@@ -270,15 +303,18 @@ export function freezeNotebookReviewScope(projectRoot: string, runId: string, ru
     }
   }
   const notebook = inputs[0]!;
-  return { schema_version: 1, review_kind: 'notebook', extraction_policy: POLICY, notebook,
-    dependencies: inputs.slice(1), opaque_links: opaque, sections: notebookReviewSections(notebookText),
-    explicit_dependencies: explicit, directory_links: [...dirs].sort(), remote_links: [...remote].sort() };
+  const material = { notebook, dependencies: inputs.slice(1), opaque_links: opaque };
+  return { schema_version: 1, review_kind: 'notebook', extraction_policy: POLICY,
+    ...material, run_states: captureNotebookRunStates(projectRoot, material), sections: notebookReviewSections(notebookText),
+    explicit_dependencies: explicit, directory_links: [...dirs].sort(), remote_links: [...remote].sort(), navigation_links: navigation };
 }
 
 function assertScope(scope: NotebookReviewScope, runDir: string, runId: string, projectRoot: string): Map<string, string> {
   if (scope.schema_version !== 1 || scope.review_kind !== 'notebook' || scope.extraction_policy !== POLICY
     || scope.notebook.path !== 'research_notebook.md' || !Array.isArray(scope.dependencies)) throw new Error('invalid whole-notebook review scope');
   if (scope.directory_links?.length) throw new NotebookRequestCapacityError('Historical linked directory content was not frozen; dependency closure remains unavailable. Execute a fresh review with explicit original file links.');
+  if (scope.run_states === undefined) throw new NotebookRequestCapacityError('Historical notebook review has no referenced-run state binding; execute a fresh full-text review. Its original evidence remains readable.');
+  assertNotebookRunStates(scope, scope.run_states);
   const texts = new Map<string, string>();
   for (const input of [scope.notebook, ...scope.dependencies]) {
     if (texts.has(input.path)) throw new Error('duplicate notebook review input');
@@ -293,17 +329,31 @@ function assertScope(scope: NotebookReviewScope, runDir: string, runId: string, 
     const snapshot = resolveVerifiedRunArtifact(runDir, runId, input.snapshot_ref, 'opaque source snapshot');
     if (hash(snapshot.bytes) !== input.sha256 || snapshot.bytes.length !== input.bytes) throw new Error('opaque source scope disagrees with frozen bytes');
   }
+  if (scope.evidence) { assertDeclaredEvidenceScope(scope, runDir, runId, projectRoot, texts); return texts; }
   // Recheck the closure from every original text snapshot. Historical scopes
   // do not gain complete coverage merely because all of their listed hashes fit.
   const recorded = new Set([...texts.keys(), ...(scope.opaque_links ?? []).map(i => i.path), ...(scope.directory_links ?? [])]);
+  const navigation: NavigationLink[] = [];
   for (const [relative, text] of texts) {
-    for (const raw of destinations(text)) {
+    for (const link of destinations(text)) {
+      const raw = link.url;
+      // Historical scopes retain their original all-links closure. New scopes
+      // must bind the declared navigation inventory to the actual source bytes.
+      if (scope.navigation_links !== undefined && link.navigation) {
+        checkNavigationTarget(projectRoot, relative, raw);
+        navigation.push({ source: relative, destination: raw });
+        continue;
+      }
       if (raw.startsWith('#') || /^[a-z][a-z\d+.-]*:/i.test(raw) || raw.startsWith('//')) continue;
       const target = decodeURIComponent(raw.split(/[?#]/, 1)[0]!);
       const filename = resolveWithinRoot(projectRoot, path.resolve(projectRoot, path.dirname(relative), target), 'original dependency closure');
       const local = path.relative(projectRoot, filename).split(path.sep).join('/');
       if (!recorded.has(local)) throw new Error(`whole-original dependency closure omits ${local}`);
     }
+  }
+  if (scope.navigation_links !== undefined && !same(scope.navigation_links, navigation)) throw new Error('notebook navigation inventory disagrees with frozen sources');
+  for (const relative of scope.explicit_dependencies) {
+    if (!texts.has(relative)) throw new Error(`explicit notebook dependency was not frozen: ${relative}`);
   }
   return texts;
 }
@@ -332,6 +382,7 @@ function assertAnchors(anchors: unknown, text: string, from: number, to: number,
 }
 
 export function assessNotebookReviewReport(report: unknown, scope: NotebookReviewScope, texts: Map<string, string>, scopeSha256: string): { accepted: boolean; coverageComplete: boolean; reviewed: number; findings: unknown[]; reason: string } {
+  if (scope.evidence) throw new Error('declared evidence requires hierarchical batch report assessment');
   if (!object(report) || report.review_kind !== 'notebook' || report.schema_version !== 1
     || !['PASS', 'FAIL'].includes(report.verdict) || typeof report.summary !== 'string' || !report.summary.trim()
     || report.scope_sha256 !== scopeSha256 || !Array.isArray(report.blocking_issues)
@@ -421,10 +472,11 @@ function assessNotebookExecution(projectRoot: string, runDir: string, runId: str
       resolveVerifiedRunArtifact(runDir, runId, execution.stdout_ref, 'review stdout');
       resolveVerifiedRunArtifact(runDir, runId, execution.stderr_ref, 'review stderr');
       const scope = loadVerifiedRunJson<NotebookReviewScope>(runDir, runId, execution.scope_ref, 'notebook review scope');
-      const texts = assertScope(scope, runDir, runId, projectRoot);
+      if (scope.evidence) throw new Error('declared evidence requires canonical source batches and integration execution');
       result.reviewed_notebook_sha256 = scope.notebook.sha256; result.sections_total = scope.sections.length;
       sourceRefs = [execution.scope_ref, scope.notebook.snapshot_ref, ...scope.dependencies.map(dep => dep.snapshot_ref), ...(scope.opaque_links ?? []).map(input => input.snapshot_ref), ...(execution.manifest_ref ? [execution.manifest_ref] : [])];
       outputRefs = execution.report_ref ? [execution.report_ref] : [];
+      const texts = assertScope(scope, runDir, runId, projectRoot);
       if (execution.exit_status !== 0 && execution.exit_status !== 86) return { ...result, status: 'unavailable', reason: 'Reviewer execution failed or was unavailable; its output supplies no acceptance.' };
       if (execution.exit_status === 86 && execution.pre_freshness_ref && !execution.post_freshness_ref) {
         const pre = loadVerifiedRunJson<any>(runDir, runId, execution.pre_freshness_ref, 'pre-review freshness');
@@ -479,6 +531,9 @@ function assessNotebookExecution(projectRoot: string, runDir: string, runId: str
       if (live.error || live.status !== 0) return { ...result, status: live.status === 3 ? 'stale' : 'unavailable', reason: 'Current review-swarm input freshness cannot be confirmed.' };
       const freshness = JSON.parse(live.stdout);
       if (freshness.status !== 'FRESH' || freshness.manifest_sha256 !== execution.manifest_ref.sha256) return { ...result, status: 'stale', reason: 'Current reviewer inputs are stale.' };
+      try {
+        if (!notebookRunStatesCurrent(projectRoot, scope)) return { ...result, status: 'stale', reason: 'Referenced run validity or identity changed since the whole-notebook review.' };
+      } catch (error) { return { ...result, status: 'unavailable', reason: `Current referenced run state cannot be read: ${error instanceof Error ? error.message : String(error)}` }; }
       executionAccepted = assessed.accepted && execution.exit_status === 0;
       return { ...result, status: assessed.accepted ? 'accepted' : assessed.coverageComplete ? 'rejected' : 'incomplete', reason: assessed.reason };
     } catch (error) {
@@ -613,7 +668,7 @@ export function reviewerReportRef(runId: string, runDir: string, output: string)
   return fs.existsSync(filename) ? createRunArtifactRef(runId, runDir, filename, 'notebook_reviewer_report') : null;
 }
 
-export async function runNotebookReview(projectRoot: string, options: { model: string; dependencies: string[]; timeoutSecs: number; json: boolean; budgets?: Partial<NotebookBudgets>; resume?: string },
+export async function runNotebookReview(projectRoot: string, options: { model: string; dependencies: string[]; timeoutSecs: number; json: boolean; budgets?: Partial<NotebookBudgets>; resume?: string; evidenceManifest?: string },
   io: { stdout: (text: string) => void; stderr: (text: string) => void }): Promise<number> {
   const runId = `${new Date().toISOString().replace(/[-:]/g, '').replace(/\..*$/, '')}-notebook-review-${randomUUID().slice(0, 8)}`;
   let runDir = path.join(projectRoot, 'artifacts/runs', runId);
@@ -654,6 +709,8 @@ export async function runNotebookReview(projectRoot: string, options: { model: s
     if (stamped.kind === 'rejected') throw new Error(stamped.message);
     let budgetOptions = options.budgets ?? {};
     let dependencies = options.dependencies;
+    let evidenceManifest = options.evidenceManifest;
+    let evidenceReferences: EvidenceReference[] | undefined;
     let batchResume: string | undefined;
     if (options.resume) {
       if (!/^[a-zA-Z0-9_-]+$/.test(options.resume)) throw new Error('invalid notebook resume run ID');
@@ -671,9 +728,17 @@ export async function runNotebookReview(projectRoot: string, options: { model: s
         if (fs.existsSync(finalPath) && !previous.batch_execution_ref) throw new Error('resume requires a batched notebook review; start a fresh review for a single-call run');
         oldScope = loadVerifiedRunJson<NotebookReviewScope>(origin, options.resume, previous.scope_ref, 'resume full scope');
         assertScope(oldScope, origin, options.resume, projectRoot);
+        if (!notebookRunStatesCurrent(projectRoot, oldScope)) throw new NotebookRequestCapacityError('Referenced run validity or identity changed since the original review; start a fresh review instead of resuming its receipts.');
         oldBudgets = notebookBudgets(previous.request_budgets);
         if (!same(previous.request_budgets, oldBudgets)) throw new Error('resume resource budgets are missing or invalid');
         oldDependencies = oldScope.explicit_dependencies;
+        if (evidenceManifest !== undefined && !oldScope.evidence) throw new Error('cannot resume with a different evidence policy');
+        if (oldScope.evidence) {
+          if (evidenceManifest !== undefined && evidenceManifest !== oldScope.evidence.manifest.path) throw new Error('resumed evidence manifest path must match');
+          evidenceManifest = oldScope.evidence.manifest.path;
+          evidenceReferences = oldScope.evidence.references;
+          if (!declaredEvidenceIsCurrent(projectRoot, oldScope)) throw new Error('resumed declared evidence changed');
+        }
         if (fs.existsSync(path.join(origin, 'batches/start.json')) || fs.existsSync(finalPath)) {
           const oldBatch = loadNotebookBatchHistory(projectRoot, options.resume);
           const oldPlan = loadVerifiedRunJson<BatchPlan>(origin, options.resume, oldBatch.plan_ref, 'resume recorded budgets');
@@ -685,6 +750,7 @@ export async function runNotebookReview(projectRoot: string, options: { model: s
         const intake = JSON.parse(fs.readFileSync(intakePath, 'utf8'));
         if (intake.schema_version !== 1 || intake.run_id !== options.resume || intake.model !== options.model || !Array.isArray(intake.dependencies)) throw new Error('invalid interrupted notebook intake');
         oldBudgets = notebookBudgets(intake.budgets); oldDependencies = intake.dependencies;
+        if (intake.evidence_manifest !== undefined || evidenceManifest !== undefined) throw new Error('declared evidence intake has no complete frozen scope; start a fresh review');
         const checkpoints = path.join(origin, 'inputs/intake');
         if (fs.existsSync(checkpoints)) for (const name of fs.readdirSync(checkpoints)) {
           if (!/^checkpoint-\d+\.json$/.test(name)) continue;
@@ -701,15 +767,15 @@ export async function runNotebookReview(projectRoot: string, options: { model: s
       dependencies = [...new Set([...oldDependencies, ...dependencies])];
     }
     const budgets = notebookBudgets(budgetOptions);
-    writeJson(path.join(runDir, 'review_intake.json'), { schema_version: 1, run_id: runId, model: options.model, budgets, dependencies, resumed_from: options.resume ?? null });
-    const scope = freezeNotebookReviewScope(projectRoot, runId, runDir, dependencies, budgets);
+    writeJson(path.join(runDir, 'review_intake.json'), { schema_version: 1, run_id: runId, model: options.model, budgets, dependencies, ...(evidenceManifest === undefined ? {} : { evidence_manifest: evidenceManifest }), resumed_from: options.resume ?? null });
+    const scope = freezeNotebookReviewScope(projectRoot, runId, runDir, dependencies, budgets, evidenceManifest, evidenceReferences);
     const scopePath = path.join(runDir, 'inputs/notebook-scope.json'); writeJson(scopePath, scope);
     const scopeRef = createRunArtifactRef(runId, runDir, scopePath, 'notebook_review_scope');
     writeJson(path.join(runDir, 'review_resume.json'), { schema_version: 1, run_id: runId, model: options.model, request_budgets: budgets, scope_ref: scopeRef });
     const script = path.join(installedRuntimeRoot(), 'skills/review-swarm/scripts/bin/review_one.py');
     let receipt: Execution;
     const totalText = [scope.notebook, ...scope.dependencies].reduce((n, input) => n + input.bytes, 0);
-    if (options.resume || totalText > Math.floor((budgets.contextBytes - 12000) / 4) || totalText + fs.statSync(scopePath).size + 12000 > budgets.contextBytes) {
+    if (scope.evidence || options.resume || totalText > Math.floor((budgets.contextBytes - 12000) / 4) || totalText + fs.statSync(scopePath).size + 12000 > budgets.contextBytes) {
       const started = new Date().toISOString();
       const batches = await executeNotebookBatches(projectRoot, runDir, runId, scope, budgets, options.model, options.timeoutSecs, batchResume);
       const batchPath = path.join(runDir, 'batch_execution.json'); writeJson(batchPath, batches);

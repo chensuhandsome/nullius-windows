@@ -12,10 +12,10 @@ in PowerShell. Create a dedicated Python environment:
 ```powershell
 py -3.11 -m venv "$env:LOCALAPPDATA\Nullius\python"
 $env:NULLIUS_PYTHON = "$env:LOCALAPPDATA\Nullius\python\Scripts\python.exe"
-corepack prepare pnpm@9.0.0 --activate
-pnpm install --frozen-lockfile
+& $env:NULLIUS_PYTHON --version
+corepack pnpm install --frozen-lockfile
 & $env:NULLIUS_PYTHON -m pip install -r meta/scripts/codegen-requirements.txt pytest pyyaml pydantic uv
-pnpm -r build
+corepack pnpm -r build
 .\scripts\install-windows-runtime.ps1 -PythonPath $env:NULLIUS_PYTHON -Persist
 nullius --help
 nullius runtime path
@@ -38,10 +38,12 @@ consumers; PowerShell 5.1's text pipeline is not a binary transport.
 
 Install the SQLite command-line tools from [SQLite](https://www.sqlite.org/download.html)
 and add their directory to PATH for memory-graph-backed execution. Graphviz
-`dot.exe` is needed for SVG/PNG graph rendering; DOT output remains available
-without it. Native export uses the selected Python's standard ZIP library to
-preserve Unicode entry names; POSIX export keeps `zip`. Model CLIs, scientific runtimes, provider
-data and credentials retain their upstream prerequisites.
+`dot.exe` enables SVG/PNG graph rendering. Project MCP PDF text and page
+images require native Poppler tools (`pdfinfo.exe`, `pdftotext.exe` and
+`pdftoppm.exe` for images) on the MCP host PATH. Native export uses the selected
+Python's standard ZIP library to preserve Unicode entry names. Model CLIs,
+scientific runtimes, provider data and credentials retain their upstream
+prerequisites. Scratch directory `run_storage.py closeout` requires POSIX.
 
 ## External project and reconnect
 
@@ -63,7 +65,15 @@ Configure MCP hosts with an absolute Node executable and built CLI arguments
 `runtime mcp <server>` when they cannot launch PowerShell commands. Keep runtime
 configuration and credentials outside the distribution. Copy-installed skills
 include the same Windows support modules and must be refreshed after changes;
-compare customized installations before replacing them.
+compare customized installations before replacing them. Preview a copy
+install from the current checkout with:
+
+```powershell
+& $env:NULLIUS_PYTHON .\packages\skills-market\scripts\install_skill.py --platform codex --source-root (Get-Location).Path --package research-harness --dry-run
+```
+
+Use `--platform claude_code` for Claude Code. The copy installer includes
+the harness scripts, references and assets.
 
 ## Platform guarantees and checks
 

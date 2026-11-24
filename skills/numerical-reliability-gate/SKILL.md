@@ -1,6 +1,6 @@
 ---
 name: numerical-reliability-gate
-description: "Convergence and reliability gate for NUMERICAL results in any field, including fits, optimizations, integrals, eigenvalues, roots, poles, zeros, ODE/PDE solutions, Monte-Carlo estimates, and downstream feature extraction. Use before a RESULT-BEARING computed number — one a conclusion or durable artifact will rest on — is trusted, compared, published, or folded into durable research artifacts; numbers that exist only to exercise code (test fixtures, internal tooling values) are covered by ordinary tests, not this gate. Requires resolution convergence, independent-confirmation checks, regression anchors, post-correction downstream recomputation, method-precondition checks, configuration-threading audits, gate-discrimination (negative-control) audits of purpose-built validation chains, accelerated/heuristic fast-path scoping, and honest uncertainty/reporting. Emits an auditable reliability matrix. Sibling to derivation-verify for symbolic claims and julia-perf for speed claims."
+description: "Convergence and reliability gate for NUMERICAL results in any field, including fits, optimizations, integrals, eigenvalues, roots, poles, zeros, ODE/PDE solutions, Monte-Carlo estimates, and downstream feature extraction. Use before a RESULT-BEARING computed number — one a conclusion or durable artifact will rest on — is trusted, compared, published, or folded into durable research artifacts; numbers that exist only to exercise code (test fixtures, internal tooling values) are covered by ordinary tests, not this gate. Stops at the needed accuracy; requires resolution convergence, independent-confirmation checks, regression anchors, post-correction downstream recomputation, method-precondition checks, configuration-threading audits, gate-discrimination (negative-control) audits of purpose-built validation chains, accelerated/heuristic fast-path scoping, and honest uncertainty/reporting. Emits an auditable reliability matrix. Sibling to derivation-verify for symbolic claims and julia-perf for speed claims."
 ---
 
 # Numerical Reliability Gate
@@ -56,11 +56,72 @@ Example quantities (illustrative, not a fixed list):
   validation (import → seeded witness → agent-follows-doc) under Long-Running Compute Jobs in
   [`research-harness`](../research-harness/SKILL.md); this gate then certifies the numbers it produces.
 
+## Output — the reliability matrix
+
+Emit one auditable record per gated quantity, conforming to
+[`references/contract.md`](references/contract.md): an artifact named
+`numerical_reliability_matrix_v1.json` (ART-01) with, per quantity, the G0 required accuracy with the uses
+it serves and the error budget naming the dominant source and the total error, the refinement ladder (setting →
+value), the independently constructed check values and whether they agree, any invariant check, the regression-anchor
+result, a degeneracy note, the recorded converged value, and a `verdict ∈ reliable | mirage |
+unconverged | method_disagreement | fragile_method | anchor_failed | degenerate | stale_artifact |
+heterogeneous_series | precondition_violated | reference_mismatch | circular_validation | overclaimed_heuristic`
+(`reliable` requires every *applicable* G0–G10 check to pass — including the G0 total error at or below the required accuracy, the G4 anchor, G6 non-staleness and connected-series fingerprint homogeneity, the G7 production-scale precondition, the G8 reference-match when a published-value match is claimed, the G9 gate-discrimination audit when trust rests on a purpose-built validation chain, and the G10 fast-path scoping when the value comes from an accelerated/heuristic path,
+not only G1–G3). Only `reliable` rows may be folded into the durable record; everything else is a labeled
+candidate or is discarded. Gate evidence is keyed **per quantity** to the evaluator fingerprint that
+produced it: a later change re-opens only the checks whose fingerprint inputs it altered, and every
+other row's evidence remains valid without re-execution or re-review — the matrix is not globally
+invalidated by unrelated edits.
+
+## Host-aware execution (quality first)
+
+The checks are a discipline you apply with whatever your host exposes, not a single script (G1–G3 are
+inherently model/tool-specific — there is no one generic runner for "refine the grid of arbitrary
+code"). Run the independently constructed checks (G2) and any independent re-computation natively where you can; for
+a cross-*model* independent reproduction of a full numerical result, pair this with an independent
+backend via [`review-swarm`](../review-swarm/SKILL.md). Spend your *maximum* reasoning — and scale the *number* of independent cross-checks — with stakes: a routine
+anchor needs the `>=2` independent-evidence floor; a load-bearing number (a contested pole, a χ² that selects a model)
+warrants more independent evidence and targeted checks of shared failure modes and — when a second LLM family exists — the cross-LLM re-implementation
+ceiling, while a trivial anchor warrants neither a tie-break nor a second engine. When the underlying compute is long and kill-prone, run it under
+[`research-harness`](../research-harness/SKILL.md) (checkpoint/heartbeat/resume) and gate the *results*
+here.
+
 ## The gate
 
 Apply the checks that fit the quantity; a result is **reliable** only when every applicable one passes.
 Each check names its own minimum disconfirming test — never accept a number because it "looks reasonable".
+G0 comes first because it sets how far every later check is run.
 
+- **G0 — Required accuracy first; refine where it reduces the relevant error; stop when the total meets it.** Before any
+  refinement, write down the **required accuracy** of the quantity and where it comes from. List every
+  use the quantity serves — the digits it will be displayed with (about half the last displayed digit,
+  tighter when the value sits near a rounding boundary), how far a downstream conclusion moves when the
+  value moves, the uncertainty it will be compared against — and take the **strictest** of them. What
+  the method could achieve is never a source. State the required accuracy on the quantity a conclusion
+  uses, not on raw internal parameters in mixed units, whose spread need not reach that quantity at all.
+  **Budget the error by source.** List the error sources with their estimated sizes — discretization or
+  integration, representation or basis truncation, model or scheme choice, statistical — name the
+  dominant one, and combine them into a **total error** by a stated rule: a linear sum by default, a sum
+  in quadrature only with a one-line reason the sources are independent. Choose refinements by their
+  expected reduction of the total error or uncertainty in the conclusion, relative to their cost.
+  Prioritize a reducible dominant source, but its label does not determine the next action. Reducing a
+  subdominant source is useful when it materially improves the required quantity or makes the total
+  meet the target: for a linear budget of 0.8 (irreducible model error) + 0.4 (numerical error) and a
+  target of 1.0, reducing the numerical part to 0.1 makes the total 0.9 without changing the dominant
+  source. Conversely, adding quadrature digits far below a larger representation error is not useful
+  when it cannot affect the target or conclusion. Explain the expected benefit in the existing
+  research notes; do not invent a new approval or bookkeeping gate for that choice.
+  **Stop when the total error is at or below the required accuracy.** Refinement past that point needs
+  explicit authorization from the project owner. A tolerance placed on the quantity itself — a ladder
+  plateau, a cross-check agreement — is set from the required accuracy and no tighter; a stricter one
+  may be kept as an informational record but may not block acceptance: **an over-tight gate is a
+  defect, just as a loose one is** — it spends computation and review rounds, and it can hold a correct
+  result out of the record. A **diagnostic threshold** is different: a residual, an invariant's integer
+  residual, a conservation or symmetry check, or a method precondition is set by what it must detect
+  or by how its defect propagates into the quantity, and stays blocking where that is what it takes to
+  bound the quantity's error or to validate the method. It carries a one-line rationale of that kind, recorded in
+  the matrix as `threshold_basis`; G0 never demotes it, and G3/G7/G9 keep their thresholds. When the required accuracy is not yet known,
+  the first deliverable is that accuracy and its source, not more digits.
 - **G1 — Discretization convergence (mirage check).** Vary *every* resolution/size knob independently —
   integration grid, continuation/interpolation node count, step size, contour density, sample count,
   **domain size / number of grid points / domain extent, truncation order, grid parity (even–odd)** —
@@ -69,13 +130,15 @@ Each check names its own minimum disconfirming test — never accept a number be
   re-evaluation at the converged setting is a MIRAGE** — re-evaluate every coarse-grid optimum at the
   converged grid before trusting it. Convergence is a *measured* plateau (e.g. stable to a stated
   tolerance across a 2–3× range of the knob), never assumed from a single setting.
-  **A ladder is evidence only if the knob demonstrably changed what was computed.** Bit-identical values
-  across nominally different settings mean the knob is **not threading** — read once at load time, frozen in
-  a cached configuration, or silently overridden by a default in the stage that consumes it — so treat
-  identical values across a ladder step as a **threading failure to diagnose, not as convergence**: a
-  plateau is values that *stop moving*, never values that never moved. The cheap positive control is to
-  confirm that the intermediate quantity most sensitive to the knob actually differs between ladder steps,
-  before the ladder is read at all.
+  **A ladder is evidence only if its settings demonstrably reached the computation.** Bit-identical
+  values alone establish neither convergence nor a threading failure. Inspect the actual configuration
+  consumed at each step and rule out a value read only at load time, a frozen cache, or a default that
+  overrides the requested setting. Use a knob-sensitive control when it can distinguish those failures.
+  If the settings really changed, explain whether exactness, a symmetry or zero, or output rounding
+  accounts for the identical values; inspect sufficient internal precision when displayed rounding
+  could hide a relevant change. Do not force a correct exact result to move. Conversely, a knob that
+  never reached the calculation supplies no convergence evidence and must be repaired. The ladder
+  still owes the applicable error, precondition and independent-confirmation checks.
   For **sensitive**
   quantities also escalate floating-point precision and check the residual / backward error / condition
   number (or use interval / arbitrary-precision arithmetic) — a grid-refined value can still be wrong from
@@ -83,7 +146,11 @@ Each check names its own minimum disconfirming test — never accept a number be
   frozen value but *shrinking uncertainty*: use independent seeds/chains, an effective sample size and
   autocorrelation check, sensitivity to rare events, and report a confidence/credible interval — not a
   single point that "stopped moving".
-- **G2 — Independent-confirmation cross-check.** Recompute with `>=2` independently constructed and executed checks. Method diversity is a separate risk dimension; same/similar methods can qualify after substantive applicability and diagnostic checks. They must **agree** within a stated tolerance. **Declare each
+  **The ladder runs to the G0 required accuracy, not to the last digit.** A plateau measured to the
+  required accuracy is convergence; further refinement for the quantity is warranted when the total
+  error is still above the required accuracy and reducing that contribution can materially help meet
+  it. Scientific diagnostics retain their separate rationale and requirements from G0.
+- **G2 — Independent-confirmation cross-check.** Recompute with `>=2` independently constructed and executed checks. Method diversity is a separate risk dimension; same/similar methods can qualify after substantive applicability and diagnostic checks. They must **agree** within a stated tolerance, set from the G0 required accuracy and no tighter than it. **Declare each
   check's resolution** — the smallest discrepancy it could detect — and *what it cannot resolve*; an
   agreement within a tolerance **coarser** than the property/effect you are certifying is **non-diagnostic**
   (record it as "agree, but cannot resolve `<X>`"), not a pass for that property. The same applies to a G3
@@ -204,7 +271,7 @@ Each check names its own minimum disconfirming test — never accept a number be
   robust to the degeneracy** (e.g., in a fit, the χ², a pole position, a lineshape, a residue) and mark
   flat-direction parameters "not individually determined".
 - **G6 — Report only converged values, with provenance.** Fold into the durable record only values that
-  passed every applicable G1–G10 check at the converged setting, each tagged with its
+  passed every applicable G0–G10 check at the converged setting, each tagged with its
   grid/node/method/contour. A coarse, intermediate, or non-converged number is **labeled as such or
   discarded** — never silently reused. Before trusting a reused artifact, check that the **evaluator
   fingerprint** that produced it (code/model version, solver settings, source and dependency identity —
@@ -405,6 +472,7 @@ Each check names its own minimum disconfirming test — never accept a number be
 
 | Task | Fragile (false ±) | Reliable |
 |---|---|---|
+| "Is it accurate enough?" | refine until nothing moves; one strict tolerance for every quantity | required accuracy from the strictest use + error budget; choose useful reductions by their effect on the total and the conclusion; stop when the total error meets the target |
 | Presence/absence, counting | fixed-seed search; `|F| < ε` threshold | topological invariant (argument-principle winding) |
 | Analytic continuation | a continuation unstable past `~N` nodes | a continuation well conditioned as nodes grow + cross-check |
 | "It converged" | a single setting that "looks flat" | a measured plateau across a 2–3× knob range + independently constructed check |
@@ -422,162 +490,4 @@ how to keep it honestly: scope the guarantee to its precondition, document the b
 precondition at production scale, and keep the unconditional path as an auto-selected escape hatch,
 rather than paper the blind spot over with a guarantee the method cannot deliver.
 
-## Output — the reliability matrix
-
-Emit one auditable record per gated quantity, conforming to
-[`references/contract.md`](references/contract.md): an artifact named
-`numerical_reliability_matrix_v1.json` (ART-01) with, per quantity, the refinement ladder (setting →
-value), the independently constructed check values and whether they agree, any invariant check, the regression-anchor
-result, a degeneracy note, the recorded converged value, and a `verdict ∈ reliable | mirage |
-unconverged | method_disagreement | fragile_method | anchor_failed | degenerate | stale_artifact |
-heterogeneous_series | precondition_violated | reference_mismatch | circular_validation | overclaimed_heuristic`
-(`reliable` requires every *applicable* G1–G10 check to pass — including the G4 anchor, G6 non-staleness and connected-series fingerprint homogeneity, the G7 production-scale precondition, the G8 reference-match when a published-value match is claimed, the G9 gate-discrimination audit when trust rests on a purpose-built validation chain, and the G10 fast-path scoping when the value comes from an accelerated/heuristic path,
-not only G1–G3). Only `reliable` rows may be folded into the durable record; everything else is a labeled
-candidate or is discarded. Gate evidence is keyed **per quantity** to the evaluator fingerprint that
-produced it: a later change re-opens only the checks whose fingerprint inputs it altered, and every
-other row's evidence remains valid without re-execution or re-review — the matrix is not globally
-invalidated by unrelated edits.
-
-## Host-aware execution (quality first)
-
-The checks are a discipline you apply with whatever your host exposes, not a single script (G1–G3 are
-inherently model/tool-specific — there is no one generic runner for "refine the grid of arbitrary
-code"). Run the independently constructed checks (G2) and any independent re-computation natively where you can; for
-a cross-*model* independent reproduction of a full numerical result, pair this with an independent
-backend via [`review-swarm`](../review-swarm/SKILL.md). Spend your *maximum* reasoning — and scale the *number* of independent cross-checks — with stakes: a routine
-anchor needs the `>=2` independent-evidence floor; a load-bearing number (a contested pole, a χ² that selects a model)
-warrants more independent evidence and targeted checks of shared failure modes and — when a second LLM family exists — the cross-LLM re-implementation
-ceiling, while a trivial anchor warrants neither a tie-break nor a second engine. When the underlying compute is long and kill-prone, run it under
-[`research-harness`](../research-harness/SKILL.md) (checkpoint/heartbeat/resume) and gate the *results*
-here.
-
-## Provenance
-
-Distilled from a real reproduction of a projected/variational multi-channel spectral analysis (a
-multi-parameter fit with analytic continuation to complex poles/eigenvalues; domain carried only by the
-caller's context). Concrete failure modes this gate encodes, each caught the hard way:
-
-- a multidimensional integration grid `(8,6,6,6)` produced "optima" at χ²/dof `1.65–1.97` that evaporated
-  to `2.4–2.6` at the converged grid `(24,16,16,10)` — **G1 mirage**;
-- a low-node-count AAA rational continuation grew a spurious low-χ² well a fitter exploited (a reported
-  `1.588` that jumped to `~2.19` once the node count was converged and a second method agreed) — **G1+G2**;
-- a fixed-seed pole search reported "pole absent" when the pole had merely moved, while an
-  argument-principle winding count found exactly one zero there — **G3** (fragile vs. reliable);
-- the same fit's near-unconstrained couplings were flat directions (Hessian non-convergent) while χ² and
-  the pole positions were stable across the valley — **G5**;
-- work was twice built on a **superseded** configuration (an earlier χ²≈2.19 fit instead of the adopted
-  χ²≈1.9 one; a deprecated continuation method instead of the adopted one) before a regression anchor
-  would have caught it — **G4** (and `research-harness` "anchor on the final adopted version").
-
-Further failure modes from a second reproduction (a composite kernel assembled from several parts,
-feeding a downstream feature extraction — a root / mode / peak located by fitting or continuation; domain
-carried only by the caller's context), each a way an agreement-based check gave false confidence:
-
-- a composite term assembled by a **positional shortcut** (grouping its factors by their *slot* — which
-  position they occupy — rather than by their *actual role*) was **bit-identically correct for the
-  symmetric/dominant components**, where the shortcut coincides with the role-correct assignment, and wrong
-  only for the single asymmetric, least-exercised component; two re-implementations that both inherited the
-  shortcut agreed to machine precision and "passed". **G2/G7** — a structure verified only on the
-  symmetric/dominant cases is unverified: exercise the case whose roles *differ* from the shortcut's
-  assumption, and test the *premise* (the assembled term equals its first-principles form) directly per
-  component, not via cross-implementation numerical agreement;
-- a **"bit-identical" cross-implementation (even cross-model) agreement** proved only that both invoked the
-  same code/idea, not that the idea was correct; the error surfaced only when a re-derivation was
-  **forbidden to inherit the suspect kernel** and rebuilt the component from first principles, after which
-  the discrepancy was *traced* (not voted) to the exact structural step. **G2** — for a load-bearing
-  structure require a from-scratch re-derivation barred from inheriting it; kernel-sharing agreement (and
-  bit-identical agreement most of all) is co-invocation, not independence;
-- an independent-verifier brief that **stated the expected answer/structure** produced conformity; the same
-  verifiers re-dispatched **blind** (given only the claim and the code — no answer, no suspected mechanism,
-  no analysis window) independently recovered the result, its mechanism, and its root cause. **G2** — blind
-  the dispatch (withhold the expected value, the suspected mechanism, and the window); an anchored agreement
-  can be a shared error rubber-stamped;
-- a **configuration knob** (a cutoff / resolution) was not threaded into a sub-stage, which **silently fell
-  back to its own default**, so the value was G1-converged but computed at the *wrong configuration* with no
-  error raised — caught only by tracing a few-percent gap to a reference. **G6/G7** — thread configuration
-  explicitly and assert end-to-end that the requested setting actually reaches every stage; a silent default
-  is a converged-but-wrong trap;
-- a connected curve was assembled from checkpoints produced by several runs that agreed on the visible
-  headline grid settings but lacked a shared full evaluator fingerprint. One plotted component remained
-  smooth while a more sensitive component developed kinks. **G6** — compare a canonical per-point
-  evaluator fingerprint before joining rows, fail on missing or mixed fingerprints, and recompute the
-  whole connected series under one fingerprint rather than smoothing or selectively replacing points;
-- a feature's width/strength was **extracted from a window/region that did not contain the feature's
-  peak/root**, so shoulder/background data fed the extractor and several methods produced a wide,
-  method-dependent spread later reported as a genuine width; **locating the feature first** (and bracketing
-  it) collapsed the spread onto the true value. **G1/G3** — locate the feature before extracting from it and
-  confirm the window brackets it; a method-spread on mis-located data is an artifact, not an uncertainty;
-- a spread of extraction methods **targeting one observable was relabeled as a different observable** that
-  was never measured directly (the directly-computed second observable lay far from the relabeled number).
-  **G8** — report an extraction under the observable it actually targets; never relabel the method-spread of
-  an extraction for one quantity as the value of another.
-
-Further failure modes from a third reproduction (a loop-integral source amplitude whose
-operator-valued numerator was disputed between competing structural hypotheses; domain carried only
-by the caller's context) — the episode that created **G9**:
-
-- the adopted numerator had been "validated" by a **reduce-to-a-known-object gate whose reference was
-  later *measured* to be exactly the assumed-form object** (the reference had been reverse-engineered
-  under the same structural assumption), and the gate's comparison limit additionally **collapsed every
-  competing numerator to the same scalar** before comparing — the gate passed at the sub-percent level
-  throughout while **three independent structural errors** persisted in the production path. **G9(i)+(ii)**
-  — a co-derived reference plus a stripped comparison mode is a tautology, not a test; the pass carried
-  zero information about the disputed structure;
-- an N-way, ~1e-5-level external-library validation of the **scalar skeleton** of the same integral was
-  repeatedly cited as support for the **numerator/operator layer it never touched**, and the audited
-  implementation was a **sibling reference path the production engine never invoked**. **G9(iv)** —
-  validation transfers neither across layers nor across code paths; annotate what each validation covers;
-- the replacement gate (an independent external-library evaluation of the **full object with the disputed
-  structure left in**, at the production configuration) **rejected both known-wrong variants at O(1)
-  margins**, confirmed the corrected structure at the expected truncation floor, and *additionally
-  surfaced a third, unsuspected defect* (a dropped frame/recoil term in an internal kinematic variable)
-  that several independent symbolic derivations and cross-model reviews had all missed. **G9(iii)** —
-  negative controls both prove the gate's discriminating power and, through their failure pattern,
-  localize errors that symbolic review alone does not reach.
-
-Further failure modes from a fourth reproduction (a hand-rolled iterative accelerator for a dominant
-eigenvalue/quantity inside a larger solver — its fast path a fixed-start subspace iteration; domain
-carried only by the caller's context) — the episode that created **G10**:
-
-- the accelerator's docstring **claimed it "never returns a wrong value"**, an unconditional guarantee a
-  fixed-start Krylov/subspace method cannot deliver; an adversarial reviewer built a small operator —
-  its dimension just above the number of deterministic starts — whose dominant eigenvector was
-  orthogonal to *every* start, so the fast path silently returned a sub-dominant value, refuting the
-  *stated guarantee* even though that input never arises in the production use. **G10(i)+(v)** — the false guarantee was itself the defect (the wrong
-  output never surfaced in production), and the reviewer's counterexample was testing the *claim*, not
-  the *use*: the fix owed was honest scoping, not a reworded guarantee nor a parameter tweak to hide the
-  case;
-- it was resolved exactly as (i)–(iv) prescribe: the false claim was **removed**, the fast path
-  **documented as a heuristic with an explicit "orthogonal-to-every-start" blind spot**, the
-  **unconditional dense solve kept as an escape hatch** (auto-selected below a size threshold), and the
-  production precondition — that the *real* (positivity / Perron-structured) operator's dominant mode
-  keeps a bounded-below overlap with the start — **validated to ~1e-14** by a fast-path ≡ dense-path
-  cross-check at production scale. **G10(ii)–(iv)** — since no fixed-start method certifies global
-  dominance universally, the honest deliverable is "heuristic + validated precondition + exact escape
-  hatch", never a universal guarantee that cannot exist.
-
-Further failure modes from a fifth reproduction (a computed field evaluated over a two-dimensional domain
-by a resolution-controlled evaluator, rendered as a landscape and feeding an already-accepted results
-table; domain carried only by the caller's context):
-
-- the rendered landscape looked smooth, and carried isolated neighbour-to-neighbour jumps of ~1.5 decades
-  whose location drifted with one coordinate, while the field was smooth to ~0.01 everywhere else —
-  including across its genuinely declared singularities. The mechanism was a **discrete acceptance
-  threshold inside the evaluator** that toggled the size of the working problem as the threshold was
-  crossed; the defect had already propagated into an accepted results table, where it reversed the verdict
-  the table was built to deliver (restored once fixed). **G1/G6** — a mechanical neighbour-difference scan
-  of the rendered field found in one pass what visual inspection had certified as smooth, which is why that
-  scan is a pre-delivery obligation in `figure-hygiene` (*rendered-field continuity*) rather than an
-  eyeball check;
-- after that evaluator was fixed, rows computed with the broken path **stayed in the delivered table under
-  a status caveat**, and figures rendered with the broken path were still presented as delivered. **G6** —
-  a correction upstream obliges *recomputation* downstream, not relabelling; the corrected verdict only
-  reappeared once the affected rows were actually recomputed, and the record had to say which rows those
-  were;
-- a convergence ladder silently **ran one setting twice** — the knob never reached the stage that consumed
-  it — and the anomalously bit-identical values were the only thing that exposed it; read as a plateau, the
-  ladder would have certified an arbitrary resolution as converged. **G1** — a ladder proves nothing until
-  the knob is shown to have changed what was computed;
-- a cross-check run through a genuinely different implementation shared the **same under-resolved value of
-  the very knob whose adequacy was in question**, so its agreement confirmed nothing about the setting under
-  suspicion. **G2** — independence has to hold in the suspect setting, not only in the implementation.
+Read [`references/provenance.md`](references/provenance.md) when you need the originating failure episodes behind the G-checks (the `## Provenance` section, moved there verbatim).

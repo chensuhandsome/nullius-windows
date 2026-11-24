@@ -44,10 +44,19 @@ numerical contracts and lifecycle checks, and
 [`julia-perf`](../../skills/julia-perf/SKILL.md) for kernel discipline and
 performance measurements. Both support standalone use.
 
+Use the runner’s `--check-client` option without a prompt for an offline check of the selected executable and its interface. CLI runners use the executable selected on PATH or through the runner’s explicit override. When a client rejects a required option, the diagnostic identifies the executable and suggests checking the client installation. When a structured response uses an unfamiliar format, check for a compatible Nullius runner update. Authentication and service failures have separate diagnostics.
+
 For bounded, tool-free file-prompt tasks through DeepSeek Harness, the catalog
 includes [`dsh-cli-runner`](../../skills/dsh-cli-runner/SKILL.md). It requires an
 explicit provider/model and retains complete session evidence; it does not
-register a review-swarm backend or install DSH.
+register a review-swarm backend or install DSH. The adapter checks the installed macOS desktop launcher, headless profile and session format before accepting results. See the skill for supported contracts.
+
+For one-shot headless tasks through the local Qwen Code CLI, the catalog includes
+[`qwen-cli-runner`](../../skills/qwen-cli-runner/SKILL.md). It feeds prompt files
+via stdin, parses the batch-JSON result message, defaults to an isolated working
+directory with analyze-only approval, and shares the file-based runner interface.
+Like `dsh-cli-runner`, it is independently usable and does not register a
+review-swarm backend or install the Qwen Code CLI.
 
 ## Layout
 
@@ -103,11 +112,13 @@ Selective skill install (default: install only what you ask for):
 # Install one skill to Codex path (~/.codex/skills/<skill-id>)
 python3 scripts/install_skill.py \
   --platform codex \
+  --source-root /absolute/path/to/nullius \
   --package research-harness
 
 # Install multiple skills (with skill-pack dependency auto-install)
 python3 scripts/install_skill.py \
   --platform codex \
+  --source-root /absolute/path/to/nullius \
   --package research-harness \
   --package research-team \
   --package research-writer
@@ -118,7 +129,7 @@ python3 scripts/install_skill.py \
 - Skill-pack dependencies are auto-installed by default (disable with `--no-deps`)
 - Non-skill dependencies (`tool-pack/workflow-pack/engine-pack/contract-pack`) are surfaced as preflight warnings, or hard-failed with `--strict-deps`
 - Source payload uses package-level publish allowlist (`source.include`) and denylist (`source.exclude`) so review artifacts/dev traces are not installed
-- `research-harness` is the thin external-project entry skill for Codex / Claude Code / Kimi Code / OpenCode. It has no hard package dependency on `research-team` or `hep-mcp`; it routes to them when those capabilities are available.
+- `research-harness` is the thin external-project entry skill for Codex / Claude Code / Kimi Code / OpenCode. Its market entry lists `research-team`, `markdown-hygiene` and other skill packs in `depends_on` (auto-installed unless `--no-deps`) and `hep-mcp` as a non-skill dependency (preflight warning, hard failure only with `--strict-deps`); it routes to them when those capabilities are available.
 - Skill-packs can opt into installer-managed Python isolation with `runtime.python.mode = "isolated-venv"`
 - Opted-in Python skills get a skill-local `.venv`; installs fail closed if venv creation or package install fails
 - `--auto-safe` is a narrower copy-install authority for `skill-pack` closures only:
@@ -187,3 +198,7 @@ When a skill opts in via `runtime.python`, the installed payload records `python
     `components` block is generated from this catalog (`packages/*.json`) — see that
     directory's README for the generator/check workflow.
   - The former GitHub mirror (`https://github.com/autoresearch-lab/autoresearch-meta`, pre-rename) is retired and no longer synced; the checked-in manifest above is the only live copy.
+
+The research-harness payload includes its optional task-brief template under
+`assets/`, alongside the standalone helper and task-context reference. Copy
+installation tests verify that these linked user materials are actually shipped.

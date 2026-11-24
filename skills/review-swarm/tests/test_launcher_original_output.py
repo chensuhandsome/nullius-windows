@@ -32,7 +32,7 @@ event={'type':'result','subtype':'success','is_error':False,'result':body,'usage
 (root/'budget.json').write_text(json.dumps(budget))
 (root/'attempt_1.events.result.json').write_text(json.dumps(event))
 (root/'attempt_1.events.jsonl').write_text(json.dumps(event)+'\\n')
-''' if capture else ''))
+''' if capture else ''), encoding="utf-8")
     shell=tmp_path/'offline_backend.sh'
     shell.write_text('#!/usr/bin/env bash\nexec '+shlex.quote(sys.executable)+' '+shlex.quote(str(script))+' "$@"\n');shell.chmod(0o755)
     return shell
@@ -74,7 +74,7 @@ def test_gemini_contract_and_home_redaction_are_derived_views(tmp_path):
     hashes=[hashlib.sha256(artifact.read_bytes()).hexdigest()]*2
     assert runtime.verify_capture_observation(None,report,hashes)['valid'] is True
     redacted=Path(str(report)+'.redacted-view.txt').read_text()
-    assert '[Gemini home]' in redacted and str(home) not in redacted
+    assert '[Gemini home]' in redacted and json.dumps(str(home))[1:-1] not in redacted
     assert agent['contract_ok'] is True and agent['verdict']=='VERDICT: READY'
 
 
@@ -97,3 +97,52 @@ def test_invalid_original_contract_remains_invalid_without_byte_rewrite(tmp_path
     result={'out':str(output),'backend':'claude','success':True,'exit_code':0}
     run_multi_task._postprocess_result(result,check_review_contract=True)
     assert output.read_bytes()==body.encode() and result['contract_ok'] is False
+
+
+def test_native_launcher_publishes_observed_capture_to_capacity_consumer(tmp_path, monkeypatch):
+    sys.path.insert(0, str(BIN.parents[2] / 'research-team/scripts/lib'))
+    from request_capacity import request_budgets, validate_request_capacity
+    shell = BIN.parents[2] / 'kimi-cli-runner/scripts/run_kimi.sh'
+    cli = tmp_path / 'kimi'
+    body = 'Complete λ\u0085first\u2028second\u2029end.\n'
+    records = [
+        {'role': 'meta', 'type': 'system.version', 'version': '2.6.2'},
+        {'role': 'assistant', 'content': body},
+        {'role': 'meta', 'type': 'session.resume_hint', 'session_id': 'offline',
+         'command': 'kimi -r offline', 'content': 'To resume this session: kimi -r offline'},
+    ]
+    raw = ''.join(json.dumps(r, ensure_ascii=False) + '\n' for r in records).encode()
+    cli.write_text(f'#!{sys.executable}\nimport sys\nsys.stdout.buffer.write({raw!r})\n')
+    cli.chmod(0o755)
+    monkeypatch.setenv('KIMI_BIN', str(cli))
+    system=tmp_path/'system.txt';system.write_text('Neutral system.')
+    prompt=tmp_path/'prompt.txt';prompt.write_text('Neutral question.')
+    output=tmp_path/'native-output'
+    old_argv=sys.argv
+    try:
+        sys.argv=['run_multi_task.py','--models','kimi/offline','--system',str(system),'--prompt',str(prompt),'--out-dir',str(output),'--kimi-runner',str(shell),'--context-tokens','200000']
+        assert run_multi_task.main()==0
+    finally:
+        sys.argv=old_argv
+    meta=json.loads((output/'meta.json').read_text())
+    agent=meta['agents'][0]
+    assert agent['success'] is True
+    assert Path(agent['out']).read_bytes() == body.encode()
+    budget = Path(agent['capture_receipt'])
+    assert (budget.parent / 'attempt_1.stdout').read_bytes() == raw
+    capture = json.loads(budget.read_text())['runtime_observation']['payload']
+    assert capture['backend'] == 'kimi'
+    assert capture['capture']['complete_output']['cli_version'] == '2.6.2'
+    budgets=request_budgets(200000,None)
+    result=validate_request_capacity(system.read_text(),prompt.read_text(),
+        {'exit_code':0,'output':agent['out']},budgets,expected_working_directory=Path.cwd())
+    assert result['capacity_evidence']=='conservative_configured_bound'
+    assert result['observed_usage']==[]
+    assert result['compaction_witness']=='unavailable'
+    assert result['usage_scope']=='unavailable'
+
+    agent['backend'] = 'claude'
+    (output / 'meta.json').write_text(json.dumps(meta))
+    with pytest.raises(ValueError, match='runner backend mismatch'):
+        validate_request_capacity(system.read_text(),prompt.read_text(),
+            {'exit_code':0,'output':agent['out']},budgets)

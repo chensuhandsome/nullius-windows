@@ -41,26 +41,34 @@ function parseBudgetValue(
   return numeric;
 }
 
+// The parsing pipe is wrapped in an outer optional so that the published
+// input schema does not list the field as required: an omitted value parses
+// (to undefined, or to the caller's .default()). The pipe itself already
+// accepts undefined, so the wrapper does not change what parses. The bounds
+// sit on the inner pipe, where the schema converter reads them. Copies of the
+// returned node (.describe(), .meta(), .clone(), .refine()) keep the same
+// pipe, so the bounds survive them; only a field built on a copy of the pipe
+// itself (.unwrap().describe()) would lose them.
+function withBudgetMetadata<T extends z.ZodType>(parsed: T, metadata: BudgetSchemaMetadata) {
+  Object.defineProperty(parsed, '__mcpBudget', {
+    value: metadata,
+    configurable: true,
+  });
+  return parsed.optional();
+}
+
 export function optionalBudgetInt(options: OptionalBudgetOptions = {}) {
-  const schema = z.preprocess(
+  const parsed = z.preprocess(
     value => parseBudgetValue(value, { ...options, integer: true }),
     z.number().int().optional(),
   );
-  Object.defineProperty(schema, '__mcpBudget', {
-    value: { ...options, integer: true } satisfies BudgetSchemaMetadata,
-    configurable: true,
-  });
-  return schema;
+  return withBudgetMetadata(parsed, { ...options, integer: true });
 }
 
 export function optionalBudgetNumber(options: OptionalBudgetOptions = {}) {
-  const schema = z.preprocess(
+  const parsed = z.preprocess(
     value => parseBudgetValue(value, { ...options, integer: false }),
     z.number().optional(),
   );
-  Object.defineProperty(schema, '__mcpBudget', {
-    value: { ...options, integer: false } satisfies BudgetSchemaMetadata,
-    configurable: true,
-  });
-  return schema;
+  return withBudgetMetadata(parsed, { ...options, integer: false });
 }

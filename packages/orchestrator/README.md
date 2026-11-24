@@ -23,13 +23,17 @@ Native computation binds an enabled A3 approval to the current manifest, scripts
 
 Executable idea-to-computation planning requires a supplied `method_spec` with `files` and `run_card`. Missing methods are refused before executable artifacts are written; planning never substitutes a result-writing runner for the requested operation.
 
+Computation completion records execution, not scientific acceptance. Follow-up requests require exactly one declared, produced output named `research_feedback.json`, with a top-level `feedback_signal` of `success`, `weak_signal` or `failure`, from a completed execution. Other JSON outputs do not authorize follow-ups. Without that declaration, `feedback_lowering` is `null`: no finding, evidence-support edge, priority change or writing follow-up is inferred. Current results record `feedback_lowering.basis` as `producer_declaration` and a `declaration_ref` bound to that produced artifact; follow-up execution verifies the binding and current bytes. Explicit producer declarations request work; they are not independently verified evidence. Historical results remain readable, but inferred historical feedback cannot authorize new follow-up execution. Compute memory records execution status without `validation_passed` or a scientific `quality_score`; skill reuse proposals based on repeated completed runs remain pending review and carry no inferred generalization confidence.
+
 ## Layer
 
-Stateful control plane. One shared authority for lifecycle state, approvals, bounded execution, verification, proposal decisions, conversational-decision recording (`nullius decision record|pending` append to `.nullius/decisions.jsonl`; `decision list` reads it back; trunk-side `decision land` assigns durable ids), and read models. A new decision first carries a six-character random Crockford-base32 handle drawn from 30 unbiased random bits ($32^6 = 2^{30}$). Candidates that also spell durable `D<n>` ids or collide with local identities are redrawn, so the exact pair-collision probability is context-dependent; with no local reservations it is $1/(2^{30}-90{,}000)\approx 9.314\times 10^{-10}$, slightly above $2^{-30}$. The guarantee is probabilistic, not structural, so merged collisions fail closed. The handle is machine-facing branch identity for local relations, with chronological presentation taken from millisecond-precision `ts`. `--resolves` closes only an earlier open `pending` entry; `--relates` records non-closing context to an earlier readable `decided` or `pending` entry. On replay, an unrecognized persisted relation is ignored and reported under `decision_ledger.unrecognized_relations` while its containing record remains admitted; a legacy or unknown non-empty string `kind` is retained under current `decided` semantics, exposing the original `source_kind` and a `normalized_kinds` diagnostic. Only exact `pending` creates an open item, while an otherwise valid `resolves` on a normalized entry still closes its pending target. After branch tails reach the authoritative trunk, `decision land` atomically assigns the next permanent `D<n>` values in trunk file order, rewrites handle-valued relations, and retains the mapping in each landed entry as `provisional_id`. Existing `D<n>` ledgers remain valid, counted, and resolvable without migration. Duplicate detection stays form-agnostic and fail-closed: `decision list` exits non-zero with offending lines for a repeated current id or a retained provisional id that is not one-to-one, the status receipt carries `decision_ledger.duplicate_ids` and `decision_ledger.ambiguous_provisional_ids`, new relation writes refuse an ambiguous target, and landing changes no bytes until the collision is repaired; normal provisional entries remain visible under `decision_ledger.unlanded_count`. A non-no-op landing refuses a ledger with no write permission bit; its last-moment source check detects edits made while the replacement is prepared, while POSIX provides no portable compare-and-swap rename against a non-cooperating writer. If rename succeeds but parent-directory durability cannot be confirmed, the CLI reports commit status uncertain; inspect with `decision list` using the same project root and rerun `decision land` there. A canonical no-op retry fsyncs the parent directory to confirm the visible entry durably. `nullius report-validate` delegates to `packages/project-contracts` for immutable main-report registration, supersession, human-evidence, and structural validation; it does not decide scientific sufficiency. Verification records adjacent production snapshots, absolute declared external refs, runtime/checker identity, process evidence, and checker self-reported matching output observations. A recorded pass does not prove that the checker actually read an output, executed a named negative control, or used an independent implementation. Dependency closure is literally incomplete: it is not syscall traced and does not bind installed bytes, dynamic imports, shared libraries, or an isolated image. The exactly-one-subject A5 consumer therefore currently returns `unavailable`; the generic approve consumer is not reachable from current validation receipts. Not a competing product identity with the MCP surface — both are facets of the same control plane.
+Stateful control plane. One shared authority for lifecycle state, approvals, bounded execution, verification, proposal decisions, conversational-decision recording (`nullius decision record|pending` append to `.nullius/decisions.jsonl`; `decision list` reads it back; trunk-side `decision land` assigns durable ids), and read models. A new decision first carries a six-character random Crockford-base32 handle drawn from 30 unbiased random bits ($32^6 = 2^{30}$). Candidates that also spell durable `D<n>` ids or collide with local identities are redrawn, so the exact pair-collision probability is context-dependent; with no local reservations it is $1/(2^{30}-90{,}000)\approx 9.314\times 10^{-10}$, slightly above $2^{-30}$. The guarantee is probabilistic, not structural, so merged collisions fail closed. The handle is machine-facing branch identity for local relations, with chronological presentation taken from millisecond-precision `ts`. `--resolves` closes only an earlier open `pending` entry; `--relates` records non-closing context to an earlier readable `decided` or `pending` entry. On replay, an unrecognized persisted relation is ignored and reported under `decision_ledger.unrecognized_relations` while its containing record remains admitted; a legacy or unknown non-blank string `kind` is retained under current `decided` semantics, exposing the original `source_kind` and a `normalized_kinds` diagnostic. Only exact `pending` creates an open item, while an otherwise valid `resolves` on a normalized entry still closes its pending target. After branch tails reach the authoritative trunk, `decision land` atomically assigns the next permanent `D<n>` values in trunk file order, rewrites handle-valued relations, and retains the mapping in each landed entry as `provisional_id`. Existing `D<n>` ledgers remain valid, counted, and resolvable without migration. Duplicate detection stays form-agnostic and fail-closed: `decision list` exits non-zero with offending lines for a repeated current id or a retained provisional id that is not one-to-one, the status receipt carries `decision_ledger.duplicate_ids` and `decision_ledger.ambiguous_provisional_ids`, new relation writes refuse an ambiguous target, and landing changes no bytes until the collision is repaired; normal provisional entries remain visible under `decision_ledger.unlanded_count`. A non-no-op landing refuses a ledger with no write permission bit; its last-moment source check detects edits made while the replacement is prepared, while POSIX provides no portable compare-and-swap rename against a non-cooperating writer. If rename succeeds but parent-directory durability cannot be confirmed, the CLI reports commit status uncertain; inspect with `decision list` using the same project root and rerun `decision land` there. A canonical no-op retry fsyncs the parent directory to confirm the visible entry durably. `nullius report-validate` delegates to `packages/project-contracts` for immutable main-report registration, supersession, human-evidence, and structural validation; it does not decide scientific sufficiency. Verification records adjacent production snapshots, absolute declared external refs, runtime/checker identity, process evidence, and checker self-reported matching output observations. A recorded pass does not prove that the checker actually read an output, executed a named negative control, or used an independent implementation. Dependency closure is literally incomplete: it is not syscall traced and does not bind installed bytes, dynamic imports, shared libraries, or an isolated image. The exactly-one-subject A5 consumer therefore currently returns `unavailable`; the generic approve consumer is not reachable from current validation receipts. Not a competing product identity with the MCP surface — both are facets of the same control plane.
 
 The delegated runtime persists each tool attempt before dispatch and classifies it as `not_started`, `outcome_unknown`, or `committed`. Unknown side effects stop for operator reconciliation; committed MCP results replay exactly; permission checks cover the full assistant turn before any transport call; and run-gate approvals remain host/operator authority. Direct and team journals use separate `artifacts/delegated-runs/direct/` and `artifacts/delegated-runs/team/` roots, themselves structurally separate from caller-named root runs. Orchestrator-owned stdio servers use explicit cwd/config/credential inputs, an isolated `HOME`, required-credential preflight, and process-group cleanup on POSIX.
 
-Persisted workflow-plan tool attempts use the same journal under `artifacts/runs/<run_id>/manifest.json`. A transport interruption stops uncertain replay; committed responses can recover state without another dispatch. Pause gates the next step, and canonical run-gate approval must precede retry of an approval-blocked step. Overflow compaction retains original user instructions and complete tool exchanges; evidence excerpts remain incomplete.
+Persisted workflow-plan tool attempts use the same journal under `artifacts/runs/<run_id>/manifest.json`. A transport interruption stops uncertain replay; committed responses can recover state without another dispatch. Pause gates the next step, and canonical run-gate approval must precede retry of an approval-blocked step. Overflow compaction retains original user instructions verbatim and never separates a tool call from its results; older exchanges are dropped whole, and long results in the kept exchanges are cut to marked incomplete excerpts.
+
+Completed workflow execution returns a separate `workflow_acceptance` view. Workflow packages select checks; the control plane executes them with bounded time and captures structured verdicts, exact input hashes and checker identities in immutable per-attempt receipts. Required nonpasses return a nonzero exit code and `ok: false`, while `run_status` continues to describe execution. Read-only status revalidates freshness, and rerunning a completed plan rechecks acceptance without tool redispatch. No declared checks means `not_required`, not scientific approval. See [the literature contract](../literature-workflows/README.md#workflow-evidence-acceptance).
 
 ## Binary
 
@@ -47,9 +51,20 @@ nullius runtime path
 
 `nullius runtime path` reports the running installation, and `nullius runtime mcp <server>` starts a registered stdio server. The package registry owns relative entrypoints; the generic CLI owns discovery and configuration validation. Host-private `servers.<server>.env` settings are read from `${XDG_CONFIG_HOME:-$HOME/.config}/nullius/runtime.json`, or an absolute `NULLIUS_RUNTIME_CONFIG`. They override ambient settings. Explicitly missing/invalid configuration fails closed. Project/data roots required by a server must be outside this installation. These installation commands add no research execution or approval authority. After moving a checkout, rebind the PATH entry above; copied skills and plugins need no source-path edits.
 
-A project-local launcher (`./.nullius/bin/nullius`) is also written during `nullius init` so already-initialized research roots can reconnect without the global wrapper. `nullius init --refresh` generates missing support guidance (`AGENTS.md`) and preserves differing existing instructions byte-for-byte, without backups or scaffold replacement of user-owned seed content. The CLI may synchronize existing machine-managed notebook and index blocks, without inserting missing blocks. To update existing guidance, render a current scaffold in a separate temporary external root and explicitly merge desired changes. For an existing project that predates the main-report registry, checkpoint it and render a current scaffold in a separate temporary external root; copy only a missing report template and manually merge the `project_index.md#Main research report` section. Refresh never performs that user-owned migration. `report-validate` returns `invalid_registry_markers` before the registry merge and `no_current_report` until a populated current report is registered.
+A project-local launcher (`./.nullius/bin/nullius`) is also written during `nullius init` so already-initialized research roots can reconnect without the global wrapper. `nullius init --refresh` generates missing support guidance (`AGENTS.md` and `research_guidance.md`) and preserves differing existing instructions byte-for-byte, without backups or scaffold replacement of user-owned seed content. The CLI may synchronize an existing machine-managed run index, without inserting a missing block; it preserves all research notebook bytes. To update existing guidance, render a current scaffold in a separate temporary external root and explicitly merge desired changes. For an existing project that predates the main-report registry, checkpoint it and render a current scaffold in a separate temporary external root; copy only a missing report template and manually merge the `project_index.md#Main research report` section. Refresh never performs that user-owned migration. `report-validate` returns `invalid_registry_markers` before the registry merge and `no_current_report` until a populated current report is registered.
 
 ## State and artifacts
+
+`status` includes the same `task_brief` navigation in `resume_context` and
+`recovery_context`. Select it with one plain inline `[Task brief](...)` link in the
+opening `research_plan.md#Current Status` area, before the next heading. The target
+must be Markdown under `artifacts/runs/<run-id>/` without symlink components.
+Missing or ambiguous selections remain navigation diagnostics. `restore_argv`
+invokes the existing Python helper to return authored scientific state and check
+selected source bytes; status itself reports `freshness: unchecked`.
+Restoration grants no verification, approval, result adoption or computation
+resume authority. It can retain provisional reasoning and locate previously
+accepted results that remain current.
 
 Writes to **external project roots only**:
 
@@ -94,6 +109,15 @@ Existing `PROJECT_INDEX_AUTO` blocks are historical, unmaintained observations; 
 
 ### Human notebook integration
 
+`research_notebook.md` is the user's scientific research notebook. Its structure
+serves the reasoning: derivations, observations, useful failed approaches and
+open questions belong there, including dated observations when useful. Agent
+instructions, operational state and tool logs live in the existing guidance,
+plan, index and run artifacts. Ordinary lifecycle commands preserve notebook
+bytes. `notebook sync` has been retired; old machine blocks remain readable and
+are never refreshed automatically. Optional historical section stamps are
+informational, not an acceptance requirement.
+
 `nullius current` and `nullius status --json` expose `notebook.result_links`
 (under `traceability` in status): current result artifacts without a direct link
 in a human `##` section are reported as `missing_links`; an unreadable notebook
@@ -109,11 +133,12 @@ At a scientific result fold, rewrite the relevant sections with assumptions,
 reasoning, interpretation and limitations, and cite the registered artifact.
 This applies in file mode as well as engine mode. The team convergence gate
 requires the declared headline in a declared rewritten section. Retired history
-remains readable; all current results participate in the final unscoped check. `nullius notebook sync` only refreshes the automatic table.
+remains readable; all current results participate in the final unscoped check.
+Run citations report their actual ledger status; no English acknowledgment word
+or section-role marker substitutes for scientific review.
 
 Notebook closeout has two separate requirements: structural navigation and a
-current full-text content review. Run the review after finishing the notebook
-and refreshing its automatic block:
+current full-text content review. Run the review after finishing the notebook:
 
 ```bash
 nullius notebook review --model <SPEC> [--dependency <project-relative-path> ...] [--timeout-secs <N>] [--json]
@@ -123,12 +148,20 @@ nullius notebook check [--result <id>] [--structure-only] [--json]
 `notebook review` executes a real reviewer through the existing `review-swarm`
 launcher. Its default hard timeout is 1200 seconds across at most 64 bounded
 calls, with one attempt per call and no automatic reviewer retry. The reviewed input freezes the
-complete UTF-8 notebook, including its automatic block, and required declared
+complete UTF-8 notebook and required declared
 dependencies with SHA-256 digests of their actual bytes. Uncommitted edits are
 included; a commit or section version stamp alone cannot establish identity.
 
-Valid UTF-8 text remains text regardless of size; Markdown links are discovered
-recursively. Binary or invalid UTF-8 linked files are immutable `opaque_links`
+The review also freezes the relevant runs' ledger states from its actual source
+closure. Reviewers see validity, replacements and recorded reasons. A change to a
+referenced run's state makes the earlier review stale; unrelated run events do not.
+A failed historical approach may still be discussed and reviewed with its current
+state. Reviews without this binding remain readable history and require a fresh
+review before current acceptance. Single-call, batched and resumed reviews use
+the same requirement.
+
+In the default recursive profile: Valid UTF-8 text remains text regardless of size; ordinary Markdown evidence links are discovered
+recursively; explicit `"nullius-navigation"` link titles declare navigation only. Binary or invalid UTF-8 linked files are immutable `opaque_links`
 snapshots and hash locators, not read evidence. Every opaque path/hash needs a
 specific `opaque_sources` assessment; a required unread source prevents acceptance.
 Notebook and explicit dependencies require strict UTF-8 and LF or CRLF endings. Linked text with unsupported bare-CR endings remains pending and prevents acceptance until a supported original is provided.
@@ -141,7 +174,7 @@ conservative token upper bound. A larger explicit byte packet requires captured
 backend token usage when that bound exceeds the window; missing capacity evidence,
 observed backend compaction or delivery failure supplies no acceptance.
 
-Larger materials use original UTF-8 intervals with adjacent original context,
+In that recursive profile, larger materials use original UTF-8 intervals with adjacent original context,
 followed by a joint audit receiving the COMPLETE original notebook and text
 dependencies. All intervals and the joint audit must be complete and fresh;
 selected quotations or summaries cannot replace this original input. The default
@@ -155,6 +188,9 @@ never rewrites old evidence. If the full joint input does not fit the backend,
 raise an available backend's request budget or leave the review incomplete.
 Compaction detection currently uses captured Claude system events; other routes have no equivalent event witness and use the conservative configured byte bound when token usage is absent. The configured token window is a caller constraint, not automatic backend-capability discovery. Only tool mode `none` is accepted. Multiple batches are one semantic review;
 they do not establish independent confirmations or a cross-family quorum.
+
+With `--evidence-manifest <project-relative JSON>`, declared evidence uses a different material organization: the complete notebook and every declared primary text original are read, reference candidates remain explicit unread provenance until adjudicated, and the final integration receives the complete notebook plus canonical source-review evidence and byte-checked original excerpts. Every notebook section and primary interval must be covered. Every discovered reference is re-adjudicated; a necessary unread source or additional-context request prevents acceptance. This profile never claims the entire recursive history was read. Real tool-mode-none execution, capacity evidence, freshness and immutable history requirements still apply.
+
 
 Any change to those bytes makes the previous review stale. Historical reports
 remain readable and retain their original input identity.
@@ -216,16 +252,31 @@ claims still need their applicable derivation, numerical, and source checks.
 
 Capacity evidence requires an adjacent runtime observation of the actual successful invocation, including requests that fit the conservative byte bound. The local runtime binds the complete original request, actual report locator, working directory and captured bytes using its host authority; recalculating project artifact hashes cannot create that observation. Verification trusts the runtime and owning OS account, and does not authenticate provider truth or scientific correctness. Historical unsigned records remain readable, but cannot supply new capacity acceptance; they are never retrospectively signed.
 
-Interrupted notebook reviews resume in a fresh run from immutable intake and batch checkpoints, retaining original bytes and rechecking current material. Only completed, fresh, runtime-observed primary interval receipts can be reused; the complete-original joint audit is always executed again. Missing closure, stale sources or incomplete operations remain unavailable or incomplete. Member reproduction evidence requires an authenticated actual producer episode and the complete source/data inputs bound to the executed command; declared inputs and bounded static discovery do not prove arbitrary filesystem activity.
+Interrupted notebook reviews resume in a fresh run from immutable intake and batch checkpoints, retaining original bytes and rechecking current material. Only completed, fresh, runtime-observed primary interval receipts can be reused; the selected profile’s final audit is always executed again. Missing closure, stale sources or incomplete operations remain unavailable or incomplete. Member reproduction evidence requires an authenticated actual producer episode and the complete source/data inputs bound to the executed command; declared inputs and bounded static discovery do not prove arbitrary filesystem activity.
 
 Runtime observations bind the actual report location, so copying signed capture bytes cannot authenticate a new invocation elsewhere. Member episodes freeze every observed file into durable original storage before publication; successful workspace cleanup preserves subsequent verification. Records lacking these bindings remain readable and unavailable for new acceptance.
 
-Member origin trusts the configured runner and owning host runtime: the complete runner bytes are recorded, but no runner allowlist or provider attestation is claimed. Offline or injected host execution establishes a local process/callable observation; actual provider capacity evidence requires the corresponding CLI capture. The canonical team cycle performs a postflight source assessment and a separate fresh assessment at the final consumer; both use the configured assessor request/execution budgets.
+Member origin trusts the configured runner and owning host runtime: the complete runner bytes are recorded, but no runner allowlist or provider attestation is claimed. Offline or injected host execution establishes a local process/callable observation; actual provider capacity evidence requires the corresponding CLI capture. For an eligible full-access candidate, the canonical team cycle performs one fresh source assessment at final convergence with the configured assessor request/execution budgets. Postflight retains structural and isolation checks. The final consumer accepts only its current checker subprocess stdout and exit status, never a stored diagnostic verdict; each later eligible convergence check executes a fresh assessor again.
 
 The owning account can read the authority key, including code executed by a member under that account; this authenticates against non-executing artifact tampering, not hostile same-account code. No OS sandbox or provider attestation is supplied.
 
 The configured token window is frozen before the original reviewer subprocess starts and bound into its authenticated runtime observation. Changing historical window metadata cannot admit that receipt. Older observations without this policy remain readable and require a fresh execution for capacity acceptance.
 
-Local directory links leave notebook dependency closure pending and prevent acceptance. The complete-original joint audit requires exact substantive original-byte anchors for every interval; a reasoning checkbox alone cannot supply coverage.
+Unmarked local directory links leave notebook dependency closure pending and prevent acceptance. A pure navigation link may use the Markdown title `"nullius-navigation"`: its local target must exist, but its content is not frozen or followed unless also linked as evidence or explicitly supplied with `--dependency`. The declaration stays visible in the complete original text and review inventory; a required unread source still prevents acceptance. The complete-original joint audit requires exact substantive original-byte anchors for every interval; a reasoning checkbox alone cannot supply coverage.
 
-Research output preservation, path classification, read-only inventory, commit checks and automatic origin-snapshot admission are described in [Research output storage](../../docs/RUN_STORAGE.md). No storage command deletes data, rewrites history or expires recovery records.
+Research output preservation, path classification, read-only inventory, commit checks and automatic origin-snapshot admission are described in [Research output storage](../../docs/RUN_STORAGE.md). Project evidence and recovery history stay in place. Optional scratch cleanup applies to finished directories outside repositories.
+
+`status.resume_context.read_order` gives `AGENTS.md`, `research_plan.md` and
+`project_index.md` first. `context_selection` preserves applicable constraints
+and complete-original verification; `recommended_files` lists source candidates.
+
+Project instructions guide the primary host agent through the current question,
+original sources, derivation or computation, useful bounded delegation,
+result-specific checks, an answer within scope and continuation. Use the formal
+`research-team` cycle when the project adopts it. A scoped answer grants no
+project adoption, result registration, notebook fold, report promotion or
+milestone closeout; those operations retain their full existing gates. Host tools
+and compaction retain execution control. The
+optional [task brief](../../skills/research-harness/references/task-context.md)
+only binds authored context to selected bytes, without changing lifecycle,
+approval or notebook-review acceptance semantics.

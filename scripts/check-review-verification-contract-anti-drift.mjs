@@ -27,11 +27,13 @@
  *
  * This lock fails the build when either clause is removed or renamed
  * from the skill surfaces that state it (research-team non-negotiables,
- * review-swarm reviewer roles).
+ * review-swarm reviewer roles). It also pins that Claude lanes carry no
+ * operator memory (safe-mode default, recorded and observed per invocation).
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { readRepositoryDocument } from './lib/instruction-documents.mjs';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
@@ -52,7 +54,7 @@ function read(relPath) {
     errors.push(`file missing: ${relPath}`);
     return null;
   }
-  return readFileSync(abs, 'utf-8');
+  return readRepositoryDocument(repoRoot, relPath);
 }
 
 function requireAll(relPath, text, needles) {
@@ -163,6 +165,114 @@ requireAll('skills/claude-cli-runner/SKILL.md', read('skills/claude-cli-runner/S
 requireAll('skills/derivation-verify/references/contract.md', read('skills/derivation-verify/references/contract.md'), [
   ['complete terminal capacity binding', 'capacity accounting uses only that terminal'],
   ['complete original comparator context', 'enters the comparator as `derivation_context`'],
+  ['transport quoting limited to input/execution', 'only input and execution may also quote the observed `transport` record'],
+  ['lane text carried once as derivation and once in transport', 'once as the structured `derivation` field and once as `transport.raw_output`'],
+  ['no other packet field adds a copy of lane text', 'no other packet field adds a copy'],
+  ['captured record carried by reference only on a proven equality', 'only when packet assembly proves the bytes equal a shipped field'],
+  ['live stream carried as content blocks with proven text slices', 'proven equal to at assembly, and every other block and field'],
+  ['captured content quoted only as the packet shows it', 'Input and execution spans quote captured content only as the packet shows it'],
+  ['one comparator request per lane holding its complete material', "each lane's assessment is made in its own comparator request that holds that lane's complete material"],
+  ['joint request holds no lane material and its assessments are discarded', 'holds no lane material, so any assessment it volunteers is discarded'],
+  ['all lanes in one request when they fit, as before', "a single comparator request holds every lane's complete material and supplies clustering, recomputation, every lane's assessment and any method risk together, as before"],
+  ['split lane counts only with span-backed answer support', 'a lane assessment in this form counts only with `answer_support`'],
+  ['per-lane form limitation stated', "no request reads two lanes' bodies except the pair requests of an explicit method risk"],
+  ['read coverage, not length, decides', 'Read coverage, not length, decides whether lane material counts'],
+  ['above the byte budget inline, counted on observed usage', 'the request counts only when the comparator\'s own runtime-observed capture shows token usage within the configured window and no compaction'],
+  ['files only beyond the token window', 'Only material whose bytes exceed four times the token window'],
+  ['single request kept above the byte budget on observed usage', 'or the lanes together are above the byte budget but every judge observes token usage'],
+  ['one contiguous exact span', 'Every source span is one contiguous exact copy of text as read'],
+  ['a byte counts as read only when returned with its frozen text', 'a byte counts as read only when a Read result returned the line holding it, numbered as that line, with exactly the frozen text'],
+  ['incomplete reads are unavailable, never truncated', 'otherwise it is unavailable as content not completely read, never truncated'],
+  ['executors that cannot show reads leave long material unavailable', 'leave such material unavailable as content not completely read'],
+  ['provider refusal recorded apart', 'a lane stopped by the provider\'s safeguards is recorded in `provider_refusals`'],
+]);
+// Lane requests ask for the written derivation; "original steps ... no truncation" wording was
+// stopped by a provider safeguard against reasoning extraction (no derivation came back at all).
+for (const lanePrompt of ['skills/derivation-verify/scripts/run_multi_backend.py', 'skills/derivation-verify/workflows/derivation_verify.js']) {
+  const body = read(lanePrompt);
+  if (!body.includes('every mathematical step stated explicitly')) errors.push(`${lanePrompt}: lane request no longer asks for every mathematical step`);
+  for (const phrase of ['COMPLETE original steps', 'COMPLETE original derivation, all steps', 'no sentence limit or truncation']) {
+    if (body.includes(phrase)) errors.push(`${lanePrompt}: lane request uses reasoning-extraction wording "${phrase}"`);
+  }
+}
+requireAll('skills/derivation-verify/tests/test_provider_refusal.py', read('skills/derivation-verify/tests/test_provider_refusal.py'), [
+  ['host-runner refusal witness', 'def test_safeguard_text_from_a_host_runner_is_a_recorded_refusal_not_a_family'],
+  ['exit-zero stream refusal witness', 'def test_stream_refusal_is_recorded_even_when_the_cli_exits_zero'],
+]);
+requireAll('skills/claude-cli-runner/tests/test_complete_assistant_text.py', read('skills/claude-cli-runner/tests/test_complete_assistant_text.py'), [
+  ['one-block snapshot alignment witness', 'def test_one_block_snapshots_after_thinking_assemble_the_text_block'],
+  ['inconsistent stream still refuses', 'def test_snapshot_kind_disagreeing_with_latest_started_block_still_refuses'],
+  ['stopped response never completes', 'def test_provider_stopped_response_with_continuation_is_not_complete_output'],
+]);
+// The copy count per packet record is pinned by offline witnesses in both executors; prose alone erodes.
+requireAll('skills/derivation-verify/tests/test_full_derivation_transport.py', read('skills/derivation-verify/tests/test_full_derivation_transport.py'), [
+  ['per-record copy count witness', 'def test_comparator_packet_repeats_lane_text_only_inside_transport'],
+  ['live-capture content-block carriage witness', 'def test_live_capture_stream_is_carried_as_content_blocks_and_each_lane_request_fits'],
+  ['unproven captured content stays inline witness', 'def test_captured_content_not_proven_equal_to_a_shipped_field_stays_inline'],
+  ['lane above the window without observable reads witness', 'def test_lane_above_the_window_without_observable_reads_is_refused_not_truncated'],
+  ['stream view omits only bookkeeping witness', 'def test_stream_view_omits_only_bookkeeping_and_references_only_the_lanes_own_output'],
+  ['captured text referenced only to a quotable field witness', 'def test_captured_text_is_referenced_only_to_a_field_spans_can_quote'],
+  ['captured-content span sources witness', 'def test_input_execution_spans_quote_captured_content_only_as_the_packet_shows_it'],
+  ['live-capture per-lane request margin assertion', "assert all(mb.validate_request_bytes(mb._ASSESS_SYSTEM, p, mb.request_budgets()) <= 0.4 * mb.request_budgets()['context_bytes'] for p in prompt.requests)"],
+  ['two lanes in one request under the default window assertion', "assert len(seen) == 1 and len(seen[0].encode('utf-8')) <= mb.request_budgets()['context_bytes']"],
+]);
+// Read coverage replaces length as the criterion; each rule is pinned by an offline witness that a mutation fails.
+requireAll('skills/derivation-verify/tests/test_comparator_read_coverage.py', read('skills/derivation-verify/tests/test_comparator_read_coverage.py'), [
+  ['per-lane requests carry one complete lane witness', 'def test_per_lane_requests_each_carry_one_complete_lane'],
+  ['chunked read with full coverage witness', 'def test_lane_larger_than_the_window_is_read_in_chunks_and_passes_only_with_full_coverage'],
+  ['incomplete or unfaithful reads refused witness', 'def test_incomplete_or_unfaithful_reads_are_refused'],
+  ['dropped read mutation', "'drop-one-read': 'some bytes of the frozen material were never returned to the comparator'"],
+  ['altered returned content mutation', "'altered-line': 'a returned line differs from the frozen bytes'"],
+  ['unobservable reads leave long lanes unavailable witness', 'def test_a_runner_or_comparator_that_cannot_show_reads_leaves_long_lanes_unavailable'],
+  ['aggregation not easier witness', 'def test_per_lane_assessment_cannot_make_aggregation_easier'],
+  ['answer support witness', 'def test_split_lane_counts_only_when_its_body_supports_its_stated_answer'],
+  ['returned line number binding mutation', "'shifted-numbers': 'a returned line differs from the frozen bytes'"],
+  ['spans checked against what was read witness', 'def test_spans_are_checked_against_exactly_what_the_comparator_read'],
+  ['lane and pair requests phrased as reviewing a written document witness', 'def test_lane_and_pair_requests_read_as_reviewing_a_written_document'],
+  ['above-budget inline counted on observed usage witness', 'def test_material_above_the_byte_budget_travels_inline_and_counts_on_observed_usage'],
+  ['above-budget inline refused without a clean observed fit witness', 'def test_material_above_the_byte_budget_is_refused_without_a_clean_observed_fit'],
+  ['files only beyond the token window witness', 'def test_only_material_beyond_the_token_window_is_read_from_files'],
+  ['ellipsis-joined span refused witness', 'def test_a_span_joining_passages_with_an_ellipsis_is_not_a_quote'],
+  ['single request above the byte budget witness', 'def test_single_request_above_the_byte_budget_holds_every_lane_on_observed_usage'],
+  ['single request fallback witness', 'def test_single_request_over_the_window_falls_back_to_lanes_assessed_one_per_request'],
+  ['no fallback when one judge counted witness', 'def test_single_request_does_not_fall_back_when_one_judge_counted'],
+  ['refused before dispatch without observable usage witness', 'def test_material_above_the_byte_budget_is_refused_before_dispatch_when_usage_cannot_be_observed'],
+]);
+requireAll('skills/derivation-verify/tests/test_native_workflow_transport.mjs', read('skills/derivation-verify/tests/test_native_workflow_transport.mjs'), [
+  ['native packet copy count witness', 'async function checkPacketCopies('],
+  ['native input/execution span sources witness', 'await checkSpanSources('],
+  ['native no-capture transport witness', 'await checkNativeCapturedRecords()'],
+  ['native long material unavailable as content not completely read witness', 'await checkNativeLongMaterialUnavailable()'],
+]);
+
+// A lane carries no operator memory: the prose in both verification skills, the runner's default
+// flag and observed-init rejection, and the witnesses that pin them.
+requireAll(SWARM_SKILL_FILE, read(SWARM_SKILL_FILE), [
+  ['operator context excluded from lanes', "**Keep the operator's own context out of the lane.**"],
+  ['no operator memory in input framing', 'carries no operator memory'],
+]);
+for (const relPath of ['skills/derivation-verify/SKILL.md', 'skills/derivation-verify/references/contract.md']) {
+  requireAll(relPath, read(relPath), [
+    ['no operator memory in input independence', 'Input independence also requires that a lane carry no operator memory'],
+  ]);
+}
+requireAll('skills/claude-cli-runner/SKILL.md', read('skills/claude-cli-runner/SKILL.md'), [
+  ['hermetic default section', '## Context sources (hermetic by default)'],
+  ['per-invocation record', '`context_sources.json`'],
+]);
+requireAll('skills/claude-cli-runner/scripts/run_claude.sh', read('skills/claude-cli-runner/scripts/run_claude.sh'), [
+  ['safe mode is the default context', 'HERMETIC=1'],
+  ['safe mode flag', 'CONTEXT_ARGS=(--safe-mode)'],
+  ['git snapshot dropped', 'export CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS=1'],
+  ['flag reaches the real invocation', '"${CONTEXT_ARGS[@]+"${CONTEXT_ARGS[@]}"}"'],
+  ['declared sources record', 'declare "${context_declare_args[@]}"'],
+  ['observed init-event check', '"${CONTEXT_SOURCES}" observe'],
+]);
+requireAll('skills/claude-cli-runner/tests/test_context_sources.py', read('skills/claude-cli-runner/tests/test_context_sources.py'), [
+  ['default flag witness', 'def test_runner_starts_every_lane_in_safe_mode_by_default'],
+  ['memory rejection witness', 'def test_live_lane_reporting_operator_memory_is_rejected_not_retried'],
+  ['reduced real stream witness', 'def test_reduced_real_init_events_separate_hermetic_from_operator_lanes'],
+  ['installed CLI witness', 'def test_installed_cli_offers_safe_mode'],
 ]);
 
 if (errors.length > 0) {
