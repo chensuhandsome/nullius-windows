@@ -14,7 +14,8 @@ export function preparedPreflight(prepared: PreparedManifest) {
   const step = prepared.steps.find(s => s.scriptPath === prepared.entryPointScriptPath) ?? prepared.steps[0]!;
   const argv = template.map(part => part.split('{entry}').join(prepared.entryPointScriptPath));
   assertCommandAllowed(argv);
-  const candidates = argv[0] === step.runtimeIdentity.requested_token ? [step.runtimeIdentity.canonical_path]
+  const useBoundRuntime = process.platform === 'win32' && argv[0] === step.runtimeIdentity.requested_token;
+  const candidates = useBoundRuntime ? [step.runtimeIdentity.canonical_path]
     : path.isAbsolute(argv[0]!) ? [argv[0]!]
     : nativeExecutableCandidates(argv[0]!, step.executionEnvironment.variables.PATH!.split(path.delimiter));
   const executable = candidates.find(file => {

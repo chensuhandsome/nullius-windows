@@ -21,7 +21,7 @@ if sys.platform == "win32":
     if not (_windows_runtime / "nullius_windows/process.py").is_file():
         raise RuntimeError("Windows process support is missing; refresh this skill installation")
     sys.path.insert(0, str(_windows_runtime))
-    from nullius_windows.process import WindowsJobProcess, child_exited as _windows_child_exited, signal_process_tree as _windows_signal_tree, stop_process as _windows_stop
+    from nullius_windows.process import WindowsJobProcess, stop_process as _windows_stop
 
 def _OwnedPopen(*args, **kwargs):
     return WindowsJobProcess(*args, **kwargs) if sys.platform == "win32" else subprocess.Popen(*args, **kwargs)

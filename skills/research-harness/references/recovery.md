@@ -95,7 +95,6 @@ The check is also skipped for:
    nullius init --runtime-only
    ./.nullius/bin/nullius status --json
    ```
-   In PowerShell, use `.\.nullius\bin\nullius.ps1 status --json` after the repair.
    If `nullius` is not on `PATH`, run the same one-time repair through your nullius checkout (substitute its absolute path):
    ```bash
    node /absolute/path/to/nullius/packages/orchestrator/dist/cli.js init --runtime-only

@@ -44,7 +44,7 @@ export function readWorkflowAcceptance(projectRoot: string, state: RunState, dep
     const parsedRef = inputSchema.parse(ref);
     const allowed = path.relative(context.project, path.join(runDirFor(context.project, state.run_id!), 'workflow_acceptance'))
       .split(path.sep).join('/') + '/';
-    const relativeReceipt = parsedRef.path.replaceAll('\\', '/');
+    const relativeReceipt = parsedRef.path.split(path.sep).join('/');
     if (!relativeReceipt.startsWith(allowed)) throw new Error('receipt is outside this run acceptance directory');
     const filename = localPath(context.project, relativeReceipt);
     if (digest(fs.readFileSync(filename)) !== parsedRef.sha256) throw new Error('acceptance receipt hash mismatch');

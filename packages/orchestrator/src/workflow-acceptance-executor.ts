@@ -25,7 +25,8 @@ export function executeAcceptanceCheck(context: AcceptanceContext, state: RunSta
     writeJsonAtomicDurable(requestPath, envelope);
     const child = spawnSync(pythonExecutable(), [localPath(context.runtimeRoot, spec.checker_path), '--request', requestPath, '--output', outputPath], {
       cwd: context.project, encoding: 'utf8', timeout: deps.timeoutMs ?? 30_000, maxBuffer: 1_000_000,
-      env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', PYTHONIOENCODING: 'utf-8' },
+      env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1',
+        ...(process.platform === 'win32' ? { PYTHONIOENCODING: 'utf-8' } : {}) },
     });
     writeBytesAtomicDurable(path.join(directory, `${spec.id}.log`), `${child.stdout ?? ''}\n${child.stderr ?? ''}`);
     if (child.error || child.signal || child.status === null) throw new Error(`checker unavailable: ${child.error?.message ?? child.signal}`);

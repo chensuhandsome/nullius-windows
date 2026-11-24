@@ -66,11 +66,11 @@ function ensureBuilt(packageName) {
   }
 
   console.log(`[ensure-artifacts] building ${packageName}`);
-  // Lifecycle scripts provide the actual package-manager entry, avoiding
-  // Windows .cmd execution and shell interpolation entirely.
-  const command = process.env.npm_execpath ? process.execPath : 'pnpm';
-  const args = process.env.npm_execpath
-    ? [process.env.npm_execpath, '--filter', packageName, 'build']
+  // Windows cannot launch the pnpm.cmd shim directly without a shell.
+  const pnpmEntrypoint = process.platform === 'win32' ? process.env.npm_execpath : undefined;
+  const command = pnpmEntrypoint ? process.execPath : 'pnpm';
+  const args = pnpmEntrypoint
+    ? [pnpmEntrypoint, '--filter', packageName, 'build']
     : ['--filter', packageName, 'build'];
   const result = spawnSync(command, args, {
     cwd: repoRoot,

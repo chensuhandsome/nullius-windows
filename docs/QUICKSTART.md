@@ -1,6 +1,6 @@
 # QUICKSTART
 
-原生 Windows 先按 [Windows 指南](./WINDOWS.md)安装。PowerShell 中的项目接续入口为 `.\.nullius\bin\nullius.ps1 status --json`；下文 shell 示例继续适用于 Git Bash/POSIX。执行模式仍由用户选择 `engine` 或 `file`。
+原生 Windows 先按 [Windows 指南](./WINDOWS.md)安装。PowerShell 中的项目接续入口为 `.\.nullius\bin\nullius.ps1 status --json`。
 
 本指南提供两段最常用路径：
 - **Generic First-Touch**：初始化外部研究项目并取得生命周期状态。

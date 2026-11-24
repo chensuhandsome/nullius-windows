@@ -39,7 +39,7 @@ code-health-check:
 	@echo "--- CODE-01.1: file size context for source review ---"
 	python3 meta/scripts/check_loc.py --base-ref origin/HEAD
 	@echo "--- NEW-R02: as any / swallowed catch gate ---"
-	bash meta/scripts/check_as_any.sh --vs-default
+	bash meta/scripts/check_as_any.sh --vs-main
 
 contract-test:
 	@echo "--- H-16b: cross-component tool subset contract ---"

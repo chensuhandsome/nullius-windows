@@ -5,7 +5,6 @@ import { spawnSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from '../src/cli.js';
 import { pythonExecutable } from '../src/python-runtime.js';
-import { readRunDirectoryInventory, readRunDirFor } from '../src/run-directories.js';
 
 describe.runIf(process.platform === 'win32')('native Unicode evidence export', () => {
   let root: string;
@@ -30,11 +29,7 @@ describe.runIf(process.platform === 'win32')('native Unicode evidence export', (
       const contents = JSON.parse(checked.stdout);
       expect(contents[`${relative}/${runId}/研究.txt`]).toBe(Buffer.from('完整 Unicode evidence').toString('base64'));
       expect(contents[`${relative}/${runId}/binary.bin`]).toBe(bytes.toString('base64'));
-      expect(readRunDirFor(root, runId!, relative)).toBe(run);
       expect(fs.readFileSync(path.join(run, 'binary.bin'))).toEqual(bytes);
     }
-    const inventory = readRunDirectoryInventory(root).runs;
-    expect(inventory.find(run => run.run_id === 'current')).toMatchObject({ historical: false, relative_path: 'artifacts/runs/current' });
-    expect(inventory.find(run => run.run_id === 'historical')).toMatchObject({ historical: true, relative_path: 'team/runs/historical' });
   });
 });

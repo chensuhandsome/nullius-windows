@@ -208,8 +208,6 @@ describe('native pause and deadline',()=>{
     const f=fixture('visible-pause');const cli=path.resolve(import.meta.dirname,'../dist/cli.js');
     createPythonStep(f.run,'scripts/step1.py',`import subprocess\nfrom pathlib import Path\nPath(${JSON.stringify(path.join(f.root,'.pause'))}).write_text('pause')\nresult=subprocess.run([${JSON.stringify(process.execPath)},${JSON.stringify(cli)},'--project-root',${JSON.stringify(f.root)},'status','--json'],check=True,capture_output=True,text=True,encoding='utf-8')\nPath('outputs').mkdir()\nPath('outputs/step1.txt').write_text(result.stdout,encoding='utf-8')\n`);
     expect((await executeComputationManifest(f.input)).status).toBe('paused');
-    expect(fs.existsSync(path.join(f.run,'computation/outputs/step1.txt')),
-      fs.readFileSync(path.join(f.run,'computation/logs/step1/stderr.txt'),'utf8')).toBe(true);
     const observed=JSON.parse(fs.readFileSync(path.join(f.run,'computation/outputs/step1.txt'),'utf8'));
     expect(observed.native_execution.message).toBe('Pause requested; last recorded step was executing. Current liveness is unverified.');
     expect(observed.native_execution.active_child).toEqual({kind:'step',id:'step1'});

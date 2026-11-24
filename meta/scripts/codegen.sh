@@ -86,7 +86,7 @@ if command -v ruff &>/dev/null; then
   # ruff is optional but if present must succeed; previously `|| true` and stderr-silencing
   # hid real format/lint regressions in generated Python.
   ruff check --fix "$PY_OUT"
-  ruff format "$PY_OUT"
+  ruff format --config "format.line-ending='lf'" "$PY_OUT"
 elif [[ -n "${CI:-}" ]]; then
   echo "ERROR: ruff is required when CI is set (CI=${CI}) but not on PATH." >&2
   echo "Install with: python3 -m pip install -r meta/scripts/codegen-requirements.txt" >&2
@@ -96,17 +96,6 @@ else
 fi
 
 echo "=== Step 6: Validate generated code ==="
-# Python formatters may preserve native CRLF on Windows. Generated artifacts
-# have one byte representation on every platform, matching checked-in LF.
-python3 - "$PY_OUT" <<'PY'
-from pathlib import Path
-import sys
-for generated in Path(sys.argv[1]).glob("*.py"):
-    original = generated.read_bytes()
-    canonical = original.replace(b"\r\n", b"\n")
-    if canonical != original:
-        generated.write_bytes(canonical)
-PY
 # tsc is a per-package devDep, not hoisted to the workspace root. `npx tsc` on a
 # fresh CI runner falls back to the npm registry and downloads an unrelated
 # placeholder `tsc@2.0.4` instead of TypeScript. Use pnpm's workspace resolution

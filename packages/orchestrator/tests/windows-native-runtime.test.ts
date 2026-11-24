@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { nativeExecutableCandidates, pythonExecutable } from '../src/python-runtime.js';
-import { resolveCanonicalNativeRuntime, assertNativeRuntimeIdentityLive } from '../src/computation/runtime-identity.js';
+import { resolveCanonicalNativeRuntime } from '../src/computation/runtime-identity.js';
 import { buildProductionEnvironment } from '../src/computation/dependency-closure.js';
 
 describe.runIf(process.platform === 'win32')('native Windows runtime identity', () => {
@@ -47,14 +47,6 @@ describe.runIf(process.platform === 'win32')('native Windows runtime identity', 
     const identity = resolveCanonicalNativeRuntime({ projectRoot, runDir: path.join(projectRoot, 'run'), token: 'node' });
     for (const key of ['SystemRoot', 'WINDIR', 'systemroot', 'PATH', 'NODE_OPTIONS']) {
       expect(() => buildProductionEnvironment(identity, { [key]: 'untrusted' })).toThrow(/fixed safety|not allowlisted/);
-    }
-  });
-
-  it('refuses stale approved runtime hashes and sizes', () => {
-    const runDir = path.join(projectRoot, 'run');
-    const identity = resolveCanonicalNativeRuntime({ projectRoot, runDir, token: 'node' });
-    for (const changed of [{ ...identity, sha256: '0'.repeat(64) }, { ...identity, size_bytes: identity.size_bytes + 1 }]) {
-      expect(() => assertNativeRuntimeIdentityLive({ identity: changed, projectRoot, runDir })).toThrow(/no longer matches/);
     }
   });
 

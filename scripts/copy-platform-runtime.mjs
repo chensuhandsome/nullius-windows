@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+if (process.platform !== 'win32') process.exit(0);
+
 const root = fileURLToPath(new URL('../', import.meta.url));
 const source = path.join(root, 'packages/shared/python/nullius_windows');
 const destination = path.join(root, 'packages/shared/dist/python/nullius_windows');

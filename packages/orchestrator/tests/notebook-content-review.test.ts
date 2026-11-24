@@ -1,4 +1,3 @@
-import { createReparseFixture } from './platform-fixtures.js';
 import * as fs from 'node:fs';
 import fsDefault from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';

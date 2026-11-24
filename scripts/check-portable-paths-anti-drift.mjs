@@ -73,6 +73,12 @@ export function scanContent(file, content) {
 }
 
 export function visibleFiles(root) {
+  if (process.platform !== 'win32') {
+    return [...new Set(execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], {
+      cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
+    }).split('\0').filter(Boolean))].sort();
+  }
+
   const cached = new Set(execFileSync('git', ['ls-files', '--cached', '-z'], {
     cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
   }).split('\0').filter(Boolean));

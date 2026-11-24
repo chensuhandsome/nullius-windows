@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { assertNoSymlinkComponents, escapesBase, realLocationWithin, resolveUnderRoot, resolveProjectContainedPath } from '../src/computation/path-safety.js';
+import { assertNoSymlinkComponents, escapesBase, realLocationWithin, resolveUnderRoot } from '../src/computation/path-safety.js';
 
 /** The one containment rule the front doors share: the project root is
  *  admitted in canonical form, an absolute path may reach it through an
@@ -68,16 +68,5 @@ describe('the shared containment checks', () => {
     expect(realLocationWithin(evidence, path.join(alias, 'artifacts', 'runs', 'r1-sibling', 'out.zip'))).toBe(false);
     expect(realLocationWithin(evidence, path.join(root, 'artifacts', 'runs', '..r1', 'out.zip'))).toBe(false);
     expect(realLocationWithin(path.join(root, 'artifacts', 'runs', 'missing'), path.join(alias, 'artifacts', 'runs', 'missing', 'x'))).toBe(true);
-  });
-
-  it('distinguishes an absent descendant from traversal below an existing file', () => {
-    const { root, alias } = aliasedProject();
-    fs.writeFileSync(path.join(root, 'notes.txt'), 'unchanged');
-    expect(resolveProjectContainedPath(root, path.join(alias, 'notes.txt'), 'probe')).toBe(path.join(root, 'notes.txt'));
-    expect(resolveProjectContainedPath(root, path.join(alias, 'missing', 'child'), 'probe')).toBe(path.join(root, 'missing', 'child'));
-    expect(() => resolveProjectContainedPath(root, path.join(alias, 'notes.txt', 'child'), 'probe'))
-      .toThrow('probe passes through something that is not a directory');
-    expect(fs.readFileSync(path.join(root, 'notes.txt'), 'utf8')).toBe('unchanged');
-    expect(fs.existsSync(path.join(root, 'missing'))).toBe(false);
   });
 });

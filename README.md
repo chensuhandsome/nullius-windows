@@ -2,7 +2,7 @@
 
 English | [中文](./docs/README_zh.md)
 
-Native Windows setup and PowerShell reconnect instructions: [Windows guide](./docs/WINDOWS.md).
+Installation and PowerShell reconnect are covered in the [Windows guide](./docs/WINDOWS.md).
 
 > **Nullius in verba** — "take nobody's word for it."
 > The Royal Society's motto is the source of this repo's name and its operating principle: scientific acceptance requires evidence and the independent checks appropriate to the claim. Unresolved and failed work can be preserved with its actual status.

@@ -2,7 +2,7 @@
 
 [English](../README.md) | 中文
 
-原生 Windows 使用 PowerShell、原生 Node/Python 和 Git for Windows Bash；安装与接续步骤见 [Windows 指南](./WINDOWS.md)。PowerShell 使用生成的 `.ps1` launcher，`.cmd` 留给 cmd.exe。
+原生 Windows 的安装与接续步骤见 [Windows 指南](./WINDOWS.md)。
 
 > **Nullius in verba**——"勿轻信任何人的断言"。
 > 这句皇家学会会训是本仓库得名的由来，也是它的研究原则：正式采纳结论需要证据，以及适合该类论断的独立核验。未决问题与失败工作可以按真实状态长期保存。

@@ -1,13 +1,12 @@
 # Native Windows
 
-Use PowerShell with native Node and Python, plus Git for Windows Bash for the
-checked-in shell runners and code generation. The development baseline is
-Node 22, pnpm 9.0.0 and Python 3.11. Keep research projects outside the checkout.
+Use PowerShell with Node 22, pnpm 9.0.0, Python 3.11 and Git for Windows.
+Git Bash runs the checked-in shell scripts. Keep research projects outside
+the checkout.
 
-## Source installation
+## Install from source
 
-Install Node, Python and Git for Windows, and select the intended Node version
-in PowerShell. Create a dedicated Python environment:
+From the checkout, select Node 22 and run:
 
 ```powershell
 py -3.11 -m venv "$env:LOCALAPPDATA\Nullius\python"
@@ -21,31 +20,22 @@ nullius --help
 nullius runtime path
 ```
 
-The installer creates managed `nullius.ps1` and `nullius.cmd` entries under
-`~/.local/bin`, backing up an existing entry. It adds a Bash `python3` bridge to
-the selected native interpreter. `-Persist` saves that interpreter and appends
-the user bin, Git Bash and Python scripts directories to the user environment.
-Restart GUI agent clients after installation. `-NodePath`, `-PythonPath` and
-`-BinDir` select absolute local paths. Existing tool installations are retained.
+The installer backs up and replaces existing `nullius.ps1` and `nullius.cmd`
+entries in `~/.local/bin` and adds a Git Bash `python3` bridge. `-Persist` saves
+the Python path and appends the required directories to the user PATH. Restart
+GUI agent clients to pick up the user environment. Use `-BinDir` without
+`-Persist` to test in a separate bin directory.
 
-PowerShell should use `nullius` or the `.ps1` entry. `.cmd` is for cmd.exe;
-PowerShell 5.1 can reinterpret metacharacters before a batch file receives them.
-The PowerShell launcher preserves empty arguments, JSON quotes, Unicode and
-literal metacharacters. It streams text/JSON through the PowerShell pipeline,
-including assignment and `ConvertFrom-Json`, and preserves the exit status.
-Use the native Node CLI or project-local `nullius.cjs` entry for byte-stream
-consumers; PowerShell 5.1's text pipeline is not a binary transport.
+Use `nullius` or the `.ps1` launcher in PowerShell and `.cmd` in cmd.exe.
+For raw byte streams, run the built CLI or the project-local `nullius.cjs`
+directly with Node. MCP hosts can launch the built CLI with an absolute Node
+path and the arguments `runtime mcp <server>`.
 
-Install the SQLite command-line tools from [SQLite](https://www.sqlite.org/download.html)
-and add their directory to PATH for memory-graph-backed execution. Graphviz
-`dot.exe` enables SVG/PNG graph rendering. Project MCP PDF text and page
-images require native Poppler tools (`pdfinfo.exe`, `pdftotext.exe` and
-`pdftoppm.exe` for images) on the MCP host PATH. Native export uses the selected
-Python's standard ZIP library to preserve Unicode entry names. Model CLIs,
-scientific runtimes, provider data and credentials retain their upstream
-prerequisites. Scratch directory `run_storage.py closeout` requires POSIX.
+Memory-graph execution requires `sqlite3.exe`. Install Graphviz for SVG or PNG
+graph rendering. Project MCP PDF reading requires Poppler (`pdfinfo.exe` and
+`pdftotext.exe`, plus `pdftoppm.exe` for page images).
 
-## External project and reconnect
+## Initialize or reconnect a project
 
 ```powershell
 $project = Join-Path $env:LOCALAPPDATA 'Nullius\example-project'
@@ -55,53 +45,34 @@ nullius init --project-root $project --runtime-only
 & "$project\.nullius\bin\nullius.ps1" status --json
 ```
 
-Choose `--mode file` for the existing file-mode workflow. Runtime-only refresh
-repairs launchers and the handshake; it does not update user-owned project
-instructions or rewrite historical runs. The launcher prefers its baked
-compatible CLI, then the first compatible managed PATH entry. An unmanaged,
-stale or self-referencing first entry is refused.
+Use `--mode file` for a file-mode project. Runtime-only refresh repairs the
+handshake and launchers while preserving authored files and historical runs.
 
-Configure MCP hosts with an absolute Node executable and built CLI arguments
-`runtime mcp <server>` when they cannot launch PowerShell commands. Keep runtime
-configuration and credentials outside the distribution. Copy-installed skills
-include the same Windows support modules and must be refreshed after changes;
-compare customized installations before replacing them. Preview a copy
-install from the current checkout with:
+## Install or refresh skills
+
+The installer bundles Windows helpers with the skills that use them. Preview
+the Codex install from the checkout:
 
 ```powershell
-& $env:NULLIUS_PYTHON .\packages\skills-market\scripts\install_skill.py --platform codex --source-root (Get-Location).Path --package research-harness --dry-run
+$skillRoot = Join-Path $env:USERPROFILE '.agents\skills'
+& $env:NULLIUS_PYTHON .\packages\skills-market\scripts\install_skill.py --platform codex --source-root (Get-Location).Path --target-root $skillRoot --package research-harness --dry-run
 ```
 
-Use `--platform claude_code` for Claude Code. The copy installer includes
-the harness scripts, references and assets.
+Remove `--dry-run` to install. For Claude Code, use `--platform claude_code`
+and omit `--target-root`. Compare and back up customized copies before using
+`--force`. Check the host's skill list for existing copies with the same names.
 
-## Platform guarantees and checks
+## Platform limits
 
-Local Windows files use flushed file data and atomic replacement. Windows does
-not provide the POSIX parent-directory fsync guarantee used on Linux/macOS, so
-successful replacement does not assert equivalent power-loss durability.
-Protected contract writes retain checked file identity, ACLs and parent-directory
-protection; unsupported protection fails closed. Use a local NTFS workspace for
-the native acceptance suite.
+Atomic writes on local NTFS flush file contents before replacement. Parent
+directory fsync durability applies to POSIX. Protected contract writes
+validate file identity and preserve ACLs. Windows Job Objects
+control transient process lifetimes and give durable deliveries separate
+ownership across transport disconnects.
 
-Transient MCP and reviewer subprocesses use Windows Job Objects with enrollment
-at creation and owned-tree cleanup. Durable project deliveries have separate
-ownership: they survive transport disconnect and retain independent deadlines.
-Jobs control lifecycle; they do not sandbox trusted local programs. Computation
-keeps its upstream direct-child limits and executable-byte approval binding.
+Independent reproduction uses Git for Windows `sh.exe`. Worktree inputs with
+committed symbolic links require Windows symlink support. Scratch cleanup with
+`run_storage.py closeout` requires POSIX.
 
-Retain Ubuntu CI and run the Windows CI job. Native checks cover launcher
-arguments and reconnect, protected writes, path/junction boundaries, process
-cleanup, durable-delivery handoff, copied assets and executable identity.
-File-symlink tests require the corresponding Windows privilege; native junction
-and hardlink cases exercise available alias boundaries independently.
-
-Independent reproduction materializes committed Git symlinks with
-`core.symlinks=true`. Those projects require Windows symlink privilege or
-Developer Mode; unavailable link support produces `environment_failed` rather
-than substituting plaintext files for the committed links. Copy isolation
-refuses symlink and junction inputs.
-
-Run `pnpm codegen:check` with Git Bash and the selected Python scripts directory
-on PATH; generated Python uses canonical LF on every platform. Rebuild after
-changes and verify `nullius --help` before reconnecting external projects.
+Run `corepack pnpm codegen:check` with Git Bash and the selected Python Scripts
+directory on PATH. The Windows CI job covers the native runtime.

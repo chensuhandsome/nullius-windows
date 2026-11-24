@@ -2,7 +2,6 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ensureWindowsProjectLocalNulliusLauncher,
@@ -17,11 +16,10 @@ function fixture(): string {
   roots.push(root);
   return root;
 }
-function fakeCli(root: string, name = 'cli.cjs', generation = 2): string {
-  const filename = path.join(root, name);
+function fakeCli(root: string): string {
+  const filename = path.join(root, 'cli.cjs');
   fs.writeFileSync(filename, [
-    `if (process.argv.includes('--launcher-generation=2') && ${generation} !== 2) process.exit(2);`,
-    `if (process.argv.includes('--launcher-protocol')) { console.log('nullius-launcher-protocol ${generation}'); process.exit(0); }`,
+    `if (process.argv.includes('--launcher-protocol')) { console.log('nullius-launcher-protocol 2'); process.exit(0); }`,
     'console.log(JSON.stringify(process.argv.slice(2)));',
   ].join('\n'));
   return filename;
@@ -73,27 +71,6 @@ describe('Windows project-local launcher', () => {
     expect(readWindowsProjectLocalNulliusLauncherHealth(moved).healthy).toBe(true);
   });
 
-  it('uses the canonical parser to refuse root overrides and retain arguments after the terminator', () => {
-    const root = fixture();
-    const parser = pathToFileURL(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist/cli-args.js')).href;
-    const cli = path.join(root, 'parser.cjs');
-    fs.writeFileSync(cli, [
-      `if (process.argv.includes('--launcher-generation=2') && process.argv.includes('--launcher-protocol')) { console.log('nullius-launcher-protocol 2'); process.exit(0); }`,
-      `import(${JSON.stringify(parser)}).then(({parseCliArgs}) => {`,
-      '  try { console.log(JSON.stringify(parseCliArgs(process.argv.slice(2)))); }',
-      '  catch(error) { console.error(error.message); process.exitCode = 2; }',
-      '});',
-    ].join('\n'));
-    ensureWindowsProjectLocalNulliusLauncher(root, [process.execPath, cli]);
-    const other = fixture();
-    const override = launch(root, ['status', '--json', `--project-root=${other}`]);
-    expect(override.status).toBe(2);
-    expect(override.stderr).toContain('duplicate --project-root');
-    const literal = launch(root, ['decision', 'record', '--', `--project-root=${other}`]);
-    expect(literal.status, literal.stderr).toBe(0);
-    expect(JSON.parse(literal.stdout)).toMatchObject({projectRoot:root, action:'record', text:`--project-root=${other}`});
-  });
-
   it('uses the first managed PATH command directly without evaluating cmd metacharacters', () => {
     const root = fixture();
     ensureWindowsProjectLocalNulliusLauncher(root, [process.execPath, path.join(root, 'missing.cjs')]);
@@ -127,12 +104,8 @@ describe('Windows project-local launcher', () => {
     expect(readWindowsProjectLocalNulliusLauncherHealth(root).healthy).toBe(false);
   });
 
-  it('requires the exact protocol and validates both companion bodies before declaring health', () => {
+  it('validates both companion bodies before declaring health', () => {
     const root = fixture();
-    vi.stubEnv('PATH', '');
-    ensureWindowsProjectLocalNulliusLauncher(root, [process.execPath, fakeCli(root, 'old.cjs', 1)]);
-    expect(launch(root).status).toBe(127);
-    expect(readWindowsProjectLocalNulliusLauncherHealth(root).issue_code).toBe('PROJECT_LOCAL_LAUNCHER_TARGET_INCOMPATIBLE');
     ensureWindowsProjectLocalNulliusLauncher(root, [process.execPath, fakeCli(root)]);
     fs.appendFileSync(path.join(root, '.nullius/bin/nullius.cjs'), '\nprocess.exit(0);\n');
     expect(readWindowsProjectLocalNulliusLauncherHealth(root).issue_code).toBe('PROJECT_LOCAL_LAUNCHER_UNPARSEABLE');

@@ -43,10 +43,8 @@ function insideRunOrProject(candidate: string, runDir: string, projectRoot: stri
 function candidateRuntimePaths(token: string): string[] {
   const candidates: string[] = [];
   if (token === 'node') candidates.push(process.execPath);
-  if (process.platform === 'win32' && /^python(?:3(?:\.\d+)?)?$/u.test(token)) {
-    // Explicit configuration is authoritative, and is still subject to every
-    // native-format, location and byte-identity check below.
-    if (token === 'python' || token === 'python3') return [pythonExecutable()];
+  if (process.platform === 'win32' && (token === 'python' || token === 'python3')) {
+    return [pythonExecutable()];
   }
   const pathDirs = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
   const stableDirs = process.platform === 'win32'

@@ -1,5 +1,3 @@
 *.sh text eol=lf
-*.py text eol=lf
-*.mjs text eol=lf
-*.ts text eol=lf
-*.ps1 text eol=lf
+meta/generated/python/*.py text eol=lf
+packages/shared/src/generated/*.ts text eol=lf

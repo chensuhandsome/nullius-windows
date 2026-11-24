@@ -17,8 +17,7 @@ const FIXED_ENVIRONMENT_KEYS = new Set([
   'PYTHONDONTWRITEBYTECODE',
   'PYTHONNOUSERSITE',
   'TZ',
-  'SystemRoot',
-  'WINDIR',
+  ...(process.platform === 'win32' ? ['SystemRoot', 'WINDIR'] : []),
 ]);
 
 const COMMON_DECLARED_ENVIRONMENT_KEYS = [

@@ -9,7 +9,7 @@
 #
 # Usage:
 #   bash meta/scripts/check_as_any.sh              # Check staged changes
-#   bash meta/scripts/check_as_any.sh --vs-default    # Worktree + untracked AND index vs origin/HEAD
+#   bash meta/scripts/check_as_any.sh --vs-main    # Worktree + untracked AND index vs origin/HEAD
 #   bash meta/scripts/check_as_any.sh --staged     # Check staged (default)
 
 set -euo pipefail
@@ -19,10 +19,10 @@ input_error() {
   exit 2
 }
 
-[[ $# -le 1 ]] || input_error "expected --staged or --vs-default"
+[[ $# -le 1 ]] || input_error "expected --staged or --vs-main"
 case "${1:---staged}" in
   --staged) MODE="staged" ;;
-  --vs-default) MODE="vs-default" ;;
+  --vs-main) MODE="vs-main" ;;
   *) input_error "unknown argument: $1" ;;
 esac
 
@@ -38,7 +38,7 @@ trap 'rm -rf -- "$temporary"' EXIT
 
 pathspecs=('*.ts' '*.tsx' ':!*.test.ts' ':!*.test.tsx')
 diff_flags=(--no-ext-diff --no-textconv --no-color --text --unified=0)
-if [[ "$MODE" == "vs-default" ]]; then
+if [[ "$MODE" == "vs-main" ]]; then
   base=$(git merge-base origin/HEAD HEAD) || input_error "cannot resolve merge-base with origin/HEAD"
   scopes=(worktree index)
   git diff "${diff_flags[@]}" "$base" -- "${pathspecs[@]}" > "$temporary/worktree.diff" \
@@ -53,7 +53,7 @@ else
     || input_error "cannot read the selected staged Git diff"
 fi
 
-if [[ "$MODE" == "vs-default" ]]; then
+if [[ "$MODE" == "vs-main" ]]; then
   enumeration_status=0
   git ls-files --others --exclude-standard -z -- "${pathspecs[@]}" \
     > "$temporary/untracked" 2> "$temporary/enumeration.stderr" || enumeration_status=$?

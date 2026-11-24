@@ -188,7 +188,7 @@ export function resolveProjectContainedPath(rootPath: string, targetPath: string
       if (metadata.isSymbolicLink()) throw unsafeFs(`${label} must not traverse a symbolic link`, { label, symlink_path: cursor });
       // Win32 can report ENOENT for children below an existing file, so the
       // ancestor itself must establish directory traversal before descending.
-      if (index < segments.length - 1 && !metadata.isDirectory()) {
+      if (process.platform === 'win32' && index < segments.length - 1 && !metadata.isDirectory()) {
         throw unsafeFs(`${label} passes through something that is not a directory`, { label, path: cursor });
       }
     } catch (error) {

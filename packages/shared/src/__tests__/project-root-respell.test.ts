@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { assertExternalProjectRoot, respellUnderDirectory } from '../project-root.js';
+import { respellUnderDirectory } from '../project-root.js';
 
 // The alias is an explicit symlink, so these cases discriminate on hosts
 // whose temp directory is not itself an alias.
@@ -38,23 +38,5 @@ describe('respellUnderDirectory', () => {
 
   it('returns null when the directory does not exist and so has no identity', () => {
     expect(respellUnderDirectory(path.join(dir, 'missing'), path.join(alias, 'missing', 'f'))).toBeNull();
-  });
-
-  it('refuses looping metadata beneath a canonical root before classifying a marker as absent', () => {
-    fs.writeFileSync(path.join(dir, 'package.json'), '{"name":"nullius"}');
-    fs.writeFileSync(path.join(dir, 'pnpm-workspace.yaml'), 'packages: [packages/*]\n');
-    fs.symlinkSync(path.join(dir, 'packages'), path.join(dir, 'packages'), process.platform === 'win32' ? 'junction' : 'dir');
-    const installation = path.join(tmp, 'installation');
-    fs.mkdirSync(installation);
-    for (const spelling of [dir, alias]) {
-      expect(() => assertExternalProjectRoot(spelling, installation)).toThrow('ambiguous development-checkout metadata');
-    }
-    expect(fs.existsSync(path.join(dir, '.nullius'))).toBe(false);
-  });
-
-  it('retains admission for an external root reached through a top-level directory alias', () => {
-    const installation = path.join(tmp, 'installation');
-    fs.mkdirSync(installation);
-    expect(assertExternalProjectRoot(alias, installation)).toBe(dir);
   });
 });

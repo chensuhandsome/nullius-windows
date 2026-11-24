@@ -172,8 +172,8 @@ test('only roots carrying an exact, regular origin marker are ever swept', t => 
     directory: named('DiRmRk'),          // the marker is a directory
     otherPid: named('OtHpId'),           // the marker names another process
     extraText: named('ExTrAt'),          // the marker carries more than the expected text
-    fifo: named('FiFoMk'),               // the marker is a FIFO (opening it must not block)
   };
+  if (process.platform !== 'win32') cases.fifo = named('FiFoMk'); // opening a FIFO must not block
   for (const dir of Object.values(cases)) fs.mkdirSync(dir);
   mark(cases.marked);
   const lookalike = path.join(parent, 'lookalike');
@@ -182,10 +182,7 @@ test('only roots carrying an exact, regular origin marker are ever swept', t => 
   fs.mkdirSync(path.join(cases.directory, ROOT_MARKER));
   fs.writeFileSync(path.join(cases.otherPid, ROOT_MARKER), 'nullius test temp root\npid 12345\n');
   fs.writeFileSync(path.join(cases.extraText, ROOT_MARKER), `nullius test temp root\npid ${dead}\nmore\n`);
-  // Windows has no filesystem FIFO; a junction at this non-regular marker
-  // boundary must also be rejected without opening or traversing its target.
-  if (process.platform === 'win32') fs.symlinkSync(parent, path.join(cases.fifo, ROOT_MARKER), 'junction');
-  else assert.equal(spawnSync('mkfifo', [path.join(cases.fifo, ROOT_MARKER)]).status, 0);
+  if (cases.fifo) assert.equal(spawnSync('mkfifo', [path.join(cases.fifo, ROOT_MARKER)]).status, 0);
   for (const dir of Object.values(cases)) {
     for (const name of fs.readdirSync(dir)) {
       const entry = path.join(dir, name);

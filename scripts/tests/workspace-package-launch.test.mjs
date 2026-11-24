@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-test('artifact bootstrap preserves a Unicode workspace path and invokes the package-manager entry without a shell', () => {
+test('Windows artifact bootstrap preserves a Unicode path and invokes the package-manager entry without a shell', { skip: process.platform !== 'win32' }, () => {
   const original = fileURLToPath(new URL('../', import.meta.url));
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace with spaces 中文 '));
   try {

@@ -108,7 +108,7 @@ export function listRunDirectories(projectRoot: string): RunDirEntry[] {
 
 /** Resolve evidence without changing its location or admitting execution. */
 export function readRunDirFor(projectRoot: string, runId: string, root?: string): string {
-  root = root?.replaceAll('\\', '/');
+  root = root?.split(path.sep).join('/');
   if (!runId || path.basename(runId) !== runId || runId === '.' || runId === '..') {
     throw new RunDirectoryError('RUN_ID_INVALID', 'run_id must be one path segment');
   }

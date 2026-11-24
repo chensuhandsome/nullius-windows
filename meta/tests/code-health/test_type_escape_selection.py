@@ -56,7 +56,7 @@ def test_current_tree_selection_blocks_each_new_code_surface(repo, surface, cont
         git(repo, "add", name)
     if surface == "committed":
         git(repo, "commit", "-qm", "candidate")
-    result = check(repo, "--vs-default")
+    result = check(repo, "--vs-main")
     assert result.returncode == 1, result.stderr
     assert "NEW-R02 FAIL" in result.stderr
     assert "PASS" not in result.stdout
@@ -78,12 +78,12 @@ def test_unstaged_repair_cannot_mask_violations_that_would_be_committed(repo, co
     if committed:
         git(repo, "commit", "-qm", "unrepaired branch result")
     (repo / "tracked.ts").write_text("const repaired = 2;\n")
-    result = check(repo, "--vs-default")
+    result = check(repo, "--vs-main")
     assert result.returncode == 1, result.stderr
     assert "FAIL [index]" in result.stderr and "FAIL [worktree]" not in result.stderr
     # Staging the actual repair makes both current snapshots safe.
     git(repo, "add", "tracked.ts")
-    assert check(repo, "--vs-default").returncode == 0
+    assert check(repo, "--vs-main").returncode == 0
 
 
 @pytest.mark.parametrize("name", ["space name.ts", "nested path/非ASCII.tsx", "line\nbreak.ts", "-option.ts", "back\\slash.ts"])
@@ -91,7 +91,7 @@ def test_untracked_file_names_are_nul_delimited_and_read_as_literal_arguments(re
     source = repo / name
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text(AS_ANY)
-    result = check(repo, "--vs-default")
+    result = check(repo, "--vs-main")
     assert result.returncode == 1, result.stderr
 
 
@@ -100,17 +100,17 @@ def test_existing_suffix_test_and_gitignore_exclusions_are_preserved(repo, name)
     source = repo / name
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text(AS_ANY + CATCH)
-    assert check(repo, "--vs-default").returncode == 0
+    assert check(repo, "--vs-main").returncode == 0
     if not name.startswith("ignored/"):
         git(repo, "add", name)
         assert check(repo, "--staged").returncode == 0
-        assert check(repo, "--vs-default").returncode == 0
+        assert check(repo, "--vs-main").returncode == 0
 
 
 def test_deletions_and_unchanged_historical_risks_are_not_new_violations(repo):
-    assert check(repo, "--vs-default").returncode == 0
+    assert check(repo, "--vs-main").returncode == 0
     (repo / "historical.ts").unlink()
-    assert check(repo, "--vs-default").returncode == 0
+    assert check(repo, "--vs-main").returncode == 0
     git(repo, "add", "-u")
     assert check(repo, "--staged").returncode == 0
 
@@ -119,19 +119,19 @@ def test_subdirectory_invocation_checks_the_same_project(repo):
     nested = repo / "subdir"
     nested.mkdir()
     (repo / "new.ts").write_text(AS_ANY)
-    assert check(nested, "--vs-default").returncode == 1
+    assert check(nested, "--vs-main").returncode == 1
 
 
 def test_repository_path_with_trailing_newline_is_not_redirected(repo):
     renamed = repo.with_name("repository\n")
     repo.rename(renamed)
     (renamed / "new.ts").write_text(AS_ANY)
-    assert check(renamed, "--vs-default").returncode == 1
+    assert check(renamed, "--vs-main").returncode == 1
 
 
 def test_large_violation_report_still_exits_one_instead_of_sigpipe(repo):
     (repo / "new.ts").write_text(AS_ANY * 5000)
-    result = check(repo, "--vs-default")
+    result = check(repo, "--vs-main")
     assert result.returncode == 1, result.stderr
     assert "5000 violation(s)" in result.stderr
     assert result.stderr.count("+const value") == 20
@@ -139,12 +139,12 @@ def test_large_violation_report_still_exits_one_instead_of_sigpipe(repo):
 
 def test_missing_base_is_unavailable_not_an_empty_success(repo):
     git(repo, "update-ref", "-d", "refs/remotes/origin/windows-support")
-    result = check(repo, "--vs-default")
+    result = check(repo, "--vs-main")
     assert result.returncode == 2
     assert "merge-base" in result.stderr and "PASS" not in result.stdout
 
 
-@pytest.mark.parametrize("flags", [(), ("--vs-default",), ("--unknown",), ("--staged", "extra")])
+@pytest.mark.parametrize("flags", [(), ("--vs-main",), ("--unknown",), ("--staged", "extra")])
 def test_missing_repository_or_invalid_arguments_never_pass(tmp_path, flags):
     result = check(tmp_path, *flags)
     assert result.returncode == 2
@@ -167,7 +167,7 @@ def test_git_failure_is_not_swallowed_as_no_added_lines(repo, tmp_path, operatio
     source = ("import os,sys\n"
               f"if {condition}:\n sys.stderr.write('injected Git read failure\\n'); sys.exit(73)\n"
               f"os.execv({GIT!r}, [{GIT!r}, *sys.argv[1:]])\n")
-    result = check(repo, "--vs-default", env=with_failing_tool(tmp_path, "git", source))
+    result = check(repo, "--vs-main", env=with_failing_tool(tmp_path, "git", source))
     assert result.returncode == 2
     assert "injected Git read failure" in result.stderr and "PASS" not in result.stdout
 
@@ -175,7 +175,7 @@ def test_git_failure_is_not_swallowed_as_no_added_lines(repo, tmp_path, operatio
 def test_untracked_read_failure_remains_unavailable(repo, tmp_path):
     (repo / "new.ts").write_text(AS_ANY)
     env = with_failing_tool(tmp_path, "sed", "import sys\nsys.stderr.write('read denied\\n');sys.exit(77)\n")
-    result = check(repo, "--vs-default", env=env)
+    result = check(repo, "--vs-main", env=env)
     assert result.returncode == 2
     assert "cannot read untracked source" in result.stderr and "PASS" not in result.stdout
 
@@ -185,7 +185,7 @@ def test_exit_zero_enumeration_warning_does_not_hide_unread_sources(repo, tmp_pa
     source = ("import os,sys\nif sys.argv[1] == 'ls-files':\n"
               " sys.stderr.write('warning: could not open directory: Permission denied\\n'); sys.exit(0)\n"
               f"os.execv({GIT!r}, [{GIT!r}, *sys.argv[1:]])\n")
-    result = check(repo, "--vs-default", env=with_failing_tool(tmp_path, "git", source))
+    result = check(repo, "--vs-main", env=with_failing_tool(tmp_path, "git", source))
     assert result.returncode == 2
     assert "cannot completely enumerate" in result.stderr and "PASS" not in result.stdout
 
@@ -194,6 +194,6 @@ def test_untracked_symlink_is_not_followed_or_reported_as_checked(repo, tmp_path
     outside = tmp_path / "outside.ts"
     outside.write_text(AS_ANY)
     (repo / "linked.ts").symlink_to(outside)
-    result = check(repo, "--vs-default")
+    result = check(repo, "--vs-main")
     assert result.returncode == 2
     assert "not a regular file" in result.stderr and "PASS" not in result.stdout

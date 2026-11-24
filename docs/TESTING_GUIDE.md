@@ -1,7 +1,5 @@
 # 功能测试指南（front-door 当前真相）
 
-原生 Windows 的依赖、PowerShell launcher、NTFS/ACL/Job Object 边界与验收说明见 [Windows 指南](./WINDOWS.md)。Windows CI 验证平台适配，Ubuntu CI 保留完整上游回归；凭据依赖的模型调用另行验收。
-
 ## Research writing and file continuity regressions
 
 ```bash

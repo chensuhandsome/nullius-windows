@@ -10,11 +10,6 @@
  * lived in `orchestrator/computation/io.ts` and
  * `hep-mcp/core/atomicWrite.ts`.
  *
- * On Windows these primitives flush file contents and perform same-volume
- * atomic renames. Node does not expose parent-directory fsync there, so the
- * POSIX directory-entry power-loss guarantee below does not apply. Windows
- * chmod also controls the read-only attribute rather than owner/group ACLs.
- *
  * ## The sequence (matches `run-manifest.ts:82-97`)
  *
  *   1. mkdirSync(dirname, recursive)
